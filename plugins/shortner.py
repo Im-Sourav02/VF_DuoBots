@@ -61,7 +61,10 @@ def get_short(url, client):
 
 @Client.on_message(filters.command('shortner') & filters.private)
 async def shortner_command(client: Client, message: Message):
+    if getattr(client, 'bot_type', 'bot1') not in ('bot1', 'rin'):
+        return  # Shortener settings only for Bot 1 (𝘚𝘢𝘥𝘪𝘦 𝘚𝘪𝘯𝘬)
     await shortner_panel(client, message)
+
 
 #===============================================================#
 

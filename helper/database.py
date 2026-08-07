@@ -14,6 +14,7 @@ class MongoDB:
             instance.premium_users = instance.db['pros']
             instance.fsub_status = instance.db['fsub_status']  # New collection for fsub status tracking
             instance.request_sub = instance.db['request_sub']  # New collection for join request tracking
+            instance.admins_data = instance.db['admins']       # Dedicated collection for admins
             cls._instances[(uri, db_name)] = instance
         return cls._instances[(uri, db_name)]
 
@@ -673,38 +674,110 @@ class MongoDB:
         messages = await self.get_messages_settings()
         return messages.get(key, default)
 
-    # ✅ ADMIN SETTINGS FUNCTIONS
-
-    async def set_admins_list(self, admins_list: list):
-        """Store admins list to database for persistence across bot restarts"""
+    # ✅ CUSTOM CAPTION FUNCTIONS
+    async def set_caption(self, caption: str):
+        """Store custom caption template in database"""
         await self.user_data.update_one(
-            {"_id": "admins_list"},
-            {"$set": {"admins": admins_list}},
+            {"_id": "custom_caption"},
+            {"$set": {"caption": caption}},
             upsert=True
         )
 
+    async def get_caption(self) -> str | None:
+        """Get custom caption template from database"""
+        data = await self.user_data.find_one({"_id": "custom_caption"})
+        return data.get("caption") if data else None
+
+    async def del_caption(self):
+        """Delete custom caption template from database"""
+        await self.user_data.delete_one({"_id": "custom_caption"})
+
+    # ✅ ADMIN SETTINGS FUNCTIONS (Collection: "admins")
+
     async def get_admins_list(self) -> list:
-        """Get admins list from database"""
-        data = await self.user_data.find_one({"_id": "admins_list"})
-        return data.get("admins", []) if data else []
+        """Get all admin IDs from the 'admins' collection"""
+        try:
+            admins = []
+            async for doc in self.admins_data.find({}):
+                doc_id = doc.get("_id")
+                if isinstance(doc_id, int):
+                    admins.append(doc_id)
+                elif isinstance(doc_id, str) and doc_id.lstrip("-").isdigit():
+                    admins.append(int(doc_id))
+            
+            # Migration check: if admins collection is empty, check legacy user_data doc
+            if not admins:
+                legacy = await self.user_data.find_one({"_id": "admins_list"})
+                if legacy and legacy.get("admins"):
+                    for a_id in legacy.get("admins", []):
+                        if isinstance(a_id, (int, str)) and str(a_id).lstrip("-").isdigit():
+                            int_id = int(a_id)
+                            admins.append(int_id)
+                            await self.admins_data.update_one(
+                                {"_id": int_id},
+                                {"$set": {"_id": int_id, "added_at": datetime.now()}},
+                                upsert=True
+                            )
+            return list(set(admins))
+        except Exception as e:
+            print(f"Error getting admins list: {e}")
+            return []
+
+    async def set_admins_list(self, admins_list: list):
+        """Store/sync admins list to 'admins' collection"""
+        try:
+            target_ids = set()
+            for a_id in admins_list:
+                if isinstance(a_id, (int, str)) and str(a_id).lstrip("-").isdigit():
+                    int_id = int(a_id)
+                    target_ids.add(int_id)
+                    await self.admins_data.update_one(
+                        {"_id": int_id},
+                        {"$set": {"_id": int_id, "updated_at": datetime.now()}},
+                        upsert=True
+                    )
+            # Remove any admins not in the new list
+            if target_ids:
+                await self.admins_data.delete_many({"_id": {"$nin": list(target_ids)}})
+            else:
+                await self.admins_data.delete_many({})
+            return True
+        except Exception as e:
+            print(f"Error setting admins list: {e}")
+            return False
 
     async def add_admin(self, admin_id: int):
-        """Add an admin to the database"""
-        current_admins = await self.get_admins_list()
-        if admin_id not in current_admins:
-            current_admins.append(admin_id)
-            await self.set_admins_list(current_admins)
+        """Add an admin to the 'admins' collection"""
+        try:
+            int_id = int(admin_id)
+            await self.admins_data.update_one(
+                {"_id": int_id},
+                {"$set": {"_id": int_id, "added_at": datetime.now()}},
+                upsert=True
+            )
             return True
-        return False
+        except Exception as e:
+            print(f"Error adding admin {admin_id}: {e}")
+            return False
 
     async def remove_admin(self, admin_id: int):
-        """Remove an admin from the database"""
-        current_admins = await self.get_admins_list()
-        if admin_id in current_admins:
-            current_admins.remove(admin_id)
-            await self.set_admins_list(current_admins)
+        """Remove an admin from the 'admins' collection"""
+        try:
+            int_id = int(admin_id)
+            await self.admins_data.delete_one({"_id": int_id})
             return True
-        return False
+        except Exception as e:
+            print(f"Error removing admin {admin_id}: {e}")
+            return False
+
+    async def is_admin(self, admin_id: int) -> bool:
+        """Check if user is in 'admins' collection"""
+        try:
+            int_id = int(admin_id)
+            doc = await self.admins_data.find_one({"_id": int_id})
+            return doc is not None
+        except Exception:
+            return False
 
     # ✅ BATCH SETTINGS FUNCTIONS
 

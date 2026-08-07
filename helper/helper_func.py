@@ -347,41 +347,48 @@ def force_sub(func):
                 if request and await client.mongodb.has_submitted_join_request(user_id, channel_id):
                     request_status = await client.mongodb.get_join_request_status(user_id, channel_id)
                     if request_status == "pending":
-                        # Don't add button if request is still pending
                         continue
-                    elif request_status == "approved":
-                        # User can now join the channel
-                        button_text = f"{channel_name}"
                     else:
-                        button_text = f"{channel_name}"
+                        button_text = f"📢 {channel_name}"
                 else:
-                    # User hasn't submitted request or it's a regular channel
-                    if request:
-                        button_text = f"{channel_name}"
-                    else:
-                        button_text = f"{channel_name}"
-                
-                buttons.append(InlineKeyboardButton(button_text, url=channel_link))
+                    button_text = f"📢 {channel_name}"
+
+                buttons.append([{"text": button_text, "url": channel_link, "style": "danger"}])
 
         # Add "Try Again" button if needed
         from_link = message.text.split(" ")
         if len(from_link) > 1:
             try_again_link = f"https://t.me/{client.username}/?start={from_link[1]}"
-            buttons.append(InlineKeyboardButton("🔄 Try Again", url=try_again_link))
+            buttons.append([{"text": "🔄 Try Again", "url": try_again_link, "style": "success"}])
 
-        # Organize buttons in rows of 1 for better readability
-        buttons_markup = InlineKeyboardMarkup([[button] for button in buttons])
-        buttons_markup = None if not buttons else buttons_markup
-
-        # Edit message with status update and buttons
-        try:
-            await msg.edit_text(text=channels_message, reply_markup=buttons_markup)
-        except Exception as e:
-            client.LOGGER(__name__, client.name).warning(f"Error updating force sub message: {e}")
-            # Fallback: send new message if edit fails
+        # Edit message with styled buttons
+        from helper.styled_buttons import edit_styled_message, send_styled_photo, send_styled_message
+        success = await edit_styled_message(
+            client=client,
+            chat_id=msg.chat.id,
+            message_id=msg.id,
+            text_or_caption=channels_message,
+            reply_markup=buttons,
+            is_photo=bool(photo)
+        )
+        if not success:
             try:
                 await msg.delete()
-                await message.reply(text=channels_message, reply_markup=buttons_markup)
+                if photo:
+                    await send_styled_photo(
+                        client=client,
+                        chat_id=message.chat.id,
+                        photo=photo,
+                        caption=channels_message,
+                        reply_markup=buttons
+                    )
+                else:
+                    await send_styled_message(
+                        client=client,
+                        chat_id=message.chat.id,
+                        text=channels_message,
+                        reply_markup=buttons
+                    )
             except Exception:
                 pass
 

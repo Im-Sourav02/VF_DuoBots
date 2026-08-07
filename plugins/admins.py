@@ -28,6 +28,7 @@ __Use the appropriate button below to add or remove an admin based on your needs
 async def usage_cmd(client: Client, message: Message):
     if not message.from_user.id in client.admins:
         return await message.reply("✗ ᴛʜɪs ᴄᴀɴ ᴏɴʟʏ ʙᴇ ᴜsᴇᴅ ʙʏ ᴀᴅᴍɪɴs!")
+
     
     reply = await message.reply("<blockquote>›› ᴇxᴛʀᴀᴄᴛɪɴɢ ᴜsᴀɢᴇ ᴅᴀᴛᴀ...</blockquote>")
 
@@ -138,41 +139,122 @@ async def usage_cmd(client: Client, message: Message):
 @Client.on_callback_query(filters.regex("^add_admin$"))
 async def add_new_admins(client: Client, query: CallbackQuery):
     await query.answer()
-    if not query.from_user.id in client.admins:
+    if query.from_user.id != client.owner and query.from_user.id not in client.admins:
         return await client.send_message(query.from_user.id, client.reply_text)
-    ids_msg = await client.ask(query.from_user.id, "Send user ids seperated by a space in the next 60 seconds!\nEg: `838278682 83622928 82789928`", filters=filters.text, timeout=60)
+    ids_msg = await client.ask(query.from_user.id, "Send user ids separated by a space in the next 60 seconds!\nEg: `838278682 83622928 82789928`", filters=filters.text, timeout=60)
     ids = ids_msg.text.split()
     
+    added = 0
     try:
         for identifier in ids:
-            if int(identifier) not in client.admins:
-                client.admins.append(int(identifier))
-            
+            if not identifier.isdigit() and not (identifier.startswith('-') and identifier[1:].isdigit()):
+                continue
+            admin_id = int(identifier)
+            if admin_id not in client.admins:
+                client.admins.append(admin_id)
+            await client.mongodb.add_admin(admin_id)
+            added += 1
     except Exception as e:
         return await ids_msg.reply(f"Error: {e}")
     await admins(client, query)
-    return await ids_msg.reply(f"__{len(ids)} admin {'id' if len(ids)==1 else 'ids'} have been promoted!!__")
+    return await ids_msg.reply(f"__{added} admin {'id' if added==1 else 'ids'} promoted and saved to MongoDB!__")
     
 #===============================================================#
 
 @Client.on_callback_query(filters.regex("^rm_admin$"))
 async def remove_admins(client: Client, query: CallbackQuery):
     await query.answer()
-    if not query.from_user.id in client.admins:
+    if query.from_user.id != client.owner and query.from_user.id not in client.admins:
         return await client.send_message(query.from_user.id, client.reply_text)
-    ids_msg = await client.ask(query.from_user.id, "Send user ids seperated by a space in the next 60 seconds!\nEg: `838278682 83622928 82789928`", filters=filters.text, timeout=60)
+    ids_msg = await client.ask(query.from_user.id, "Send user ids separated by a space in the next 60 seconds!\nEg: `838278682 83622928 82789928`", filters=filters.text, timeout=60)
     ids = ids_msg.text.split()
     
+    removed = 0
     try:
         for identifier in ids:
-            if int(identifier) == client.owner:
-                await client.send_message(query.from_user.id, "Nigga i can never remove the owner from the admin list!!")
+            if not identifier.isdigit() and not (identifier.startswith('-') and identifier[1:].isdigit()):
                 continue
-            if int(identifier) in client.admins:
-                client.admins.remove(int(identifier))
+            admin_id = int(identifier)
+            if admin_id == client.owner:
+                await client.send_message(query.from_user.id, "Cannot remove the bot owner from the admin list!")
+                continue
+            if admin_id in client.admins:
+                client.admins.remove(admin_id)
+            await client.mongodb.remove_admin(admin_id)
+            removed += 1
     except Exception as e:
         return await ids_msg.reply(f"Error: {e}")
     await admins(client, query)
-    return await ids_msg.reply(f"__{len(ids)} admin {'id' if len(ids)==1 else 'ids'} have been removed!!__")
+    return await ids_msg.reply(f"__{removed} admin {'id' if removed==1 else 'ids'} removed from MongoDB!__")
+
+#===============================================================#
+
+@Client.on_message(filters.command(["admins", "adminlist"]) & filters.private)
+async def list_admins_cmd(client: Client, message: Message):
+    if message.from_user.id != client.owner and message.from_user.id not in client.admins:
+        return await message.reply("✗ ᴛʜɪs ᴄᴀɴ ᴏɴʟʏ ʙᴇ ᴜsᴇᴅ ʙʏ ᴀᴅᴍɪɴs!")
+    
+    db_admins = await client.mongodb.get_admins_list()
+    # Merge memory and db
+    all_admins = list(set(client.admins + db_admins))
+    admin_str = ", ".join(f"`{a}`" for a in all_admins) if all_admins else "None"
+    
+    text = f"""<blockquote>✦ **ʙᴏᴛ ᴀᴅᴍɪɴ ʟɪsᴛ** ✦</blockquote>
+
+›› **ᴛᴏᴛᴀʟ ᴀᴅᴍɪɴs:** `{len(all_admins)}`
+›› **ᴏᴡɴᴇʀ:** `{client.owner}`
+
+<blockquote><u>**ᴀᴅᴍɪɴ ɪᴅs:**</u>
+{admin_str}</blockquote>"""
+    await message.reply(text)
+
+#===============================================================#
+
+@Client.on_message(filters.command(["addadmin", "add_admin"]) & filters.private)
+async def add_admin_cmd(client: Client, message: Message):
+    if message.from_user.id != client.owner:
+        return await message.reply("✗ Only the bot owner can add admins!")
+    
+    parts = message.command[1:]
+    if not parts:
+        return await message.reply("<b>Usage:</b> `/addadmin <user_id1> [user_id2 ...]`")
+    
+    added = 0
+    for part in parts:
+        if not part.isdigit() and not (part.startswith('-') and part[1:].isdigit()):
+            continue
+        admin_id = int(part)
+        if admin_id not in client.admins:
+            client.admins.append(admin_id)
+        await client.mongodb.add_admin(admin_id)
+        added += 1
+    
+    await message.reply(f"✓ Successfully added `{added}` admin(s) to MongoDB collection!")
+
+#===============================================================#
+
+@Client.on_message(filters.command(["deladmin", "del_admin", "rmadmin", "rm_admin"]) & filters.private)
+async def del_admin_cmd(client: Client, message: Message):
+    if message.from_user.id != client.owner:
+        return await message.reply("✗ Only the bot owner can remove admins!")
+    
+    parts = message.command[1:]
+    if not parts:
+        return await message.reply("<b>Usage:</b> `/deladmin <user_id1> [user_id2 ...]`")
+    
+    removed = 0
+    for part in parts:
+        if not part.isdigit() and not (part.startswith('-') and part[1:].isdigit()):
+            continue
+        admin_id = int(part)
+        if admin_id == client.owner:
+            await message.reply("✗ Cannot remove the bot owner from admin list!")
+            continue
+        if admin_id in client.admins:
+            client.admins.remove(admin_id)
+        await client.mongodb.remove_admin(admin_id)
+        removed += 1
+    
+    await message.reply(f"✓ Successfully removed `{removed}` admin(s) from MongoDB collection!")
     
 

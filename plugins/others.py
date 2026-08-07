@@ -1,6 +1,6 @@
 from pyrogram import Client, filters
 from pyrogram.types import CallbackQuery, Message, InlineKeyboardButton, InlineKeyboardMarkup
-from config import MSG_EFFECT
+from config import MSG_EFFECT, START_MSG, ABOUT_TXT, CHANNELS_TXT
 
 from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
@@ -281,45 +281,109 @@ async def quick_remove_db(client: Client, message: Message):
 
 #===============================================================#
 
-#==========================================================================#        
+from helper.styled_buttons import edit_styled_message, to_pyrogram_markup
 
-@Client.on_callback_query(filters.regex('^home$'))
-async def home(client: Client, query: CallbackQuery):
-    buttons = [[InlineKeyboardButton("Help", callback_data = "about"), InlineKeyboardButton("Close", callback_data = "close")]]
-    if query.from_user.id in client.admins:
-        buttons.insert(0, [InlineKeyboardButton("⛩️ ꜱᴇᴛᴛɪɴɢꜱ ⛩️", callback_data="settings")])
-    await query.message.edit_text(
-        text=client.messages.get('START', 'No Start Message').format(
-            first=query.from_user.first_name,
-            last=query.from_user.last_name,
-            username=None if not query.from_user.username else '@' + query.from_user.username,
-            mention=query.from_user.mention,
-            id=query.from_user.id
-                
-        ),
-        reply_markup=InlineKeyboardMarkup(buttons)
+async def _edit_msg(client: Client, query: CallbackQuery, text: str, reply_markup):
+    is_photo = bool(query.message.photo)
+    success = await edit_styled_message(
+        client=client,
+        chat_id=query.message.chat.id,
+        message_id=query.message.id,
+        text_or_caption=text,
+        reply_markup=reply_markup,
+        is_photo=is_photo
     )
-    return
+    if not success:
+        try:
+            pyro_markup = to_pyrogram_markup(reply_markup)
+            if is_photo:
+                await query.message.edit_caption(caption=text, reply_markup=pyro_markup)
+            else:
+                await query.message.edit_text(text=text, reply_markup=pyro_markup)
+        except Exception:
+            pass
+
+@Client.on_callback_query(filters.regex('^(home|start)$'))
+async def home(client: Client, query: CallbackQuery):
+    if getattr(client, 'bot_type', 'bot1') in ('bot1', 'rin') and query.from_user.id in client.admins:
+        buttons = [
+            [
+                {"text": "• ᴀʙᴏᴜᴛ", "callback_data": "about", "style": "primary"},
+                {"text": "• ᴄʜᴀɴɴᴇʟs", "callback_data": "channels", "style": "danger"}
+            ],
+            [
+                {"text": "⛩️ ꜱᴇᴛᴛɪɴɢꜱ ⛩️", "callback_data": "settings", "style": "success"},
+                {"text": "• Close •", "callback_data": "close", "style": "danger"}
+            ]
+        ]
+    else:
+        buttons = [
+            [
+                {"text": "• ᴀʙᴏᴜᴛ", "callback_data": "about", "style": "primary"},
+                {"text": "• ᴄʜᴀɴɴᴇʟs", "callback_data": "channels", "style": "danger"}
+            ],
+            [
+                {"text": "• Close •", "callback_data": "close", "style": "danger"}
+            ]
+        ]
+    text = client.messages.get('START', START_MSG).format(
+        first=query.from_user.first_name,
+        last=query.from_user.last_name or "",
+        username=None if not query.from_user.username else '@' + query.from_user.username,
+        mention=query.from_user.mention,
+        id=query.from_user.id
+    )
+    await _edit_msg(client, query, text, buttons)
 
 #==========================================================================#        
 
 @Client.on_callback_query(filters.regex('^about$'))
 async def about(client: Client, query: CallbackQuery):
-    buttons = [[InlineKeyboardButton("Back", callback_data = "home"), InlineKeyboardButton("Close", callback_data = "close")]]
-    await query.message.edit_text(
-        text=client.messages.get('ABOUT', 'No Start Message').format(
+    buttons = [
+        [
+            {"text": "• ʙᴀᴄᴋ", "callback_data": "start", "style": "primary"},
+            {"text": "ᴄʟᴏsᴇ •", "callback_data": "close", "style": "danger"}
+        ]
+    ]
+    about_text = client.messages.get('ABOUT', ABOUT_TXT)
+    try:
+        about_text = about_text.format(
             owner_id=client.owner,
-            bot_username=client.username,
+            bot_username=getattr(client, 'username', '') or getattr(client, 'name', ''),
             first=query.from_user.first_name,
-            last=query.from_user.last_name,
+            last=query.from_user.last_name or "",
             username=None if not query.from_user.username else '@' + query.from_user.username,
             mention=query.from_user.mention,
             id=query.from_user.id
-                
-        ),
-        reply_markup=InlineKeyboardMarkup(buttons)
-    )
-    return
+        )
+    except Exception:
+        pass
+    await _edit_msg(client, query, about_text, buttons)
+
+#==========================================================================#        
+
+@Client.on_callback_query(filters.regex('^channels$'))
+async def channels_cb(client: Client, query: CallbackQuery):
+    buttons = [
+        [
+            {"text": "• ʙᴀᴄᴋ", "callback_data": "start", "style": "primary"},
+            {"text": "home•", "callback_data": "start", "style": "success"}
+        ]
+    ]
+    channels_text = client.messages.get('CHANNELS', CHANNELS_TXT)
+    try:
+        channels_text = channels_text.format(
+            owner_id=client.owner,
+            bot_username=getattr(client, 'username', '') or getattr(client, 'name', ''),
+            first=query.from_user.first_name,
+            last=query.from_user.last_name or "",
+            username=None if not query.from_user.username else '@' + query.from_user.username,
+            mention=query.from_user.mention,
+            id=query.from_user.id
+        )
+    except Exception:
+        pass
+    await _edit_msg(client, query, channels_text, buttons)
 
 #==========================================================================#        
 

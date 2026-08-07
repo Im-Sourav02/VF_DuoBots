@@ -10,6 +10,7 @@ import humanize
 async def settings(client, query):
     # Count active force subscription channels by type
     total_fsub = len(client.fsub_dict)
+
     request_enabled = sum(1 for data in client.fsub_dict.values() if data[2])
     timer_enabled = sum(1 for data in client.fsub_dict.values() if data[3] > 0)
     
@@ -43,7 +44,14 @@ async def settings(client, query):
         [InlineKeyboardButton('ᴀᴅᴍɪɴꜱ', 'admins'), InlineKeyboardButton('ᴀᴜᴛᴏ ᴅᴇʟᴇᴛᴇ', 'auto_del')],
         [InlineKeyboardButton('ʜᴏᴍᴇ', 'home'), InlineKeyboardButton('›› ɴᴇxᴛ', 'settings_page_2')]
     ])
-    await query.message.edit_text(msg, reply_markup=reply_markup)
+    try:
+        if query.message.photo:
+            await query.message.delete()
+            await client.send_message(chat_id=query.message.chat.id, text=msg, reply_markup=reply_markup)
+        else:
+            await query.message.edit_text(msg, reply_markup=reply_markup)
+    except Exception:
+        await query.message.edit_text(msg, reply_markup=reply_markup)
     return
 
 #===============================================================#

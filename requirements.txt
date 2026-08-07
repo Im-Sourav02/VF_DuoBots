@@ -8,3 +8,4 @@ markdown
 asyncio
 TgCrypto
 requests
+python-dotenv

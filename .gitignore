@@ -1,0 +1,21 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Pyrogram session files
+*.session
+*.session-journal
+
+# Environment variables & secrets
+.env
+
+# Logs
+*.log
+bot.log
+
+# IDE & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
