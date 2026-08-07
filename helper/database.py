@@ -75,6 +75,18 @@ class MongoDB:
             print(f"Failed to remove premium user: {e}")
             return False
 
+    async def clean_expired_pros(self) -> int:
+        """Purge all expired premium users from the database."""
+        try:
+            now = datetime.now()
+            result = await self.premium_users.delete_many({
+                'expiry_date': {'$ne': None, '$lte': now}
+            })
+            return result.deleted_count
+        except Exception as e:
+            print(f"Failed to clean expired pro users: {e}")
+            return 0
+
     async def is_pro(self, user_id: int):
         doc = await self.premium_users.find_one({'_id': user_id})
         if not doc:
@@ -83,9 +95,15 @@ class MongoDB:
             return True  # Legacy premium users without expiry date
         if doc['expiry_date'] is None:
             return True  # Permanent premium users
-        return doc['expiry_date'] > datetime.now()
+        if doc['expiry_date'] <= datetime.now():
+            # Automatically delete expired premium user from DB
+            await self.remove_pro(user_id)
+            return False
+        return True
 
     async def get_pros_list(self):
+        # Purge expired users from DB first
+        await self.clean_expired_pros()
         current_time = datetime.now()
         cursor = self.premium_users.find({
             '$or': [
@@ -98,7 +116,13 @@ class MongoDB:
         
     async def get_expiry_date(self, user_id: int) -> datetime:
         doc = await self.premium_users.find_one({'_id': user_id})
-        return doc.get('expiry_date') if doc else None
+        if not doc:
+            return None
+        expiry = doc.get('expiry_date')
+        if expiry and expiry <= datetime.now():
+            await self.remove_pro(user_id)
+            return None
+        return expiry
 
     # ✅ USER FUNCTIONS
 

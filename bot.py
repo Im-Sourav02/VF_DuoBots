@@ -188,6 +188,14 @@ class Bot(Client):
         except Exception as e:
             self.LOGGER(__name__, self.name).warning(f"Error loading admins from DB: {e}")
 
+        # ── Auto-clean expired premium users ──────────────────
+        try:
+            purged = await self.mongodb.clean_expired_pros()
+            if purged > 0:
+                self.LOGGER(__name__, self.name).info(f"Purged {purged} expired premium user(s) from database.")
+        except Exception as e:
+            self.LOGGER(__name__, self.name).warning(f"Error purging expired premium users: {e}")
+
         # ── Verify primary DB channel ─────────────────────────
         # Both Rin AND Sephra must have a valid DB channel.
         try:
