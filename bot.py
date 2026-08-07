@@ -68,54 +68,6 @@ class Bot(Client):
         self.bot2_bot_username   = bot2_bot_username or sephra_bot_username
         self.sephra_db_channel   = self.bot2_db_channel
         self.sephra_bot_username = self.bot2_bot_username
-        self.sessions            = {}                # In-memory session tracking
-
-    def get_session(self, user_id: int, max_inactivity: int = 300) -> dict | None:
-        """
-        Get active session for user_id.
-        If older than max_inactivity (default 5 mins / 300s), deletes session and returns None.
-        Otherwise updates last_active timestamp and returns the session dict.
-        """
-        session = self.sessions.get(user_id)
-        if not session:
-            return None
-        now = datetime.now().timestamp()
-        last_active = session.get("last_active", now)
-        if now - last_active > max_inactivity:
-            self.sessions.pop(user_id, None)
-            return None
-        session["last_active"] = now
-        return session
-
-    def set_session(self, user_id: int, data: dict):
-        """Set or update session with current timestamp."""
-        data["last_active"] = datetime.now().timestamp()
-        self.sessions[user_id] = data
-
-    def clear_session(self, user_id: int):
-        """Remove session for user."""
-        self.sessions.pop(user_id, None)
-
-    def clean_stale_sessions(self, max_age: int = 600) -> int:
-        """Purge sessions older than max_age (default 10 mins / 600s). Returns count purged."""
-        now = datetime.now().timestamp()
-        expired = [uid for uid, s in list(self.sessions.items()) if now - s.get("last_active", now) > max_age]
-        for uid in expired:
-            self.sessions.pop(uid, None)
-        return len(expired)
-
-    async def _session_cleaner_loop(self):
-        """Background loop to periodically delete old sessions (older than 10 mins) to save memory."""
-        while True:
-            try:
-                await asyncio.sleep(60)
-                purged = self.clean_stale_sessions(max_age=600)
-                if purged > 0:
-                    self.LOGGER(__name__, self.name).info(f"[{self.bot_type.upper()}] Deleted {purged} stale session(s) older than 10 mins.")
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                self.LOGGER(__name__, self.name).warning(f"Error in session cleaner loop: {e}")
 
     # ── Startup ──────────────────────────────────────────────
 
@@ -269,11 +221,8 @@ class Bot(Client):
             self.LOGGER(__name__, self.name).warning(f"Failed to send restart notification to owner: {e}")
 
         self.username = usr_bot_me.username
-        self._cleaner_task = asyncio.create_task(self._session_cleaner_loop())
 
     async def stop(self, *args):
-        if hasattr(self, "_cleaner_task") and self._cleaner_task:
-            self._cleaner_task.cancel()
         await super().stop()
         self.LOGGER(__name__, self.name).info("Bot stopped.")
 
