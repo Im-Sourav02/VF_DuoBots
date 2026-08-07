@@ -22,16 +22,17 @@ def get_short(url, client):
     if not shortner_enabled:
         return url  # Return original URL if shortner is disabled
 
-    # Step 2: Check cache
-    if url in shortened_urls_cache:
-        return shortened_urls_cache[url]
+    # Dynamic shortner settings from client if available
+    short_url = getattr(client, 'short_url', SHORT_URL)
+    short_api = getattr(client, 'short_api', SHORT_API)
+
+    # Step 2: Check cache with active short_url as key prefix
+    cache_key = f"{short_url}:{url}"
+    if cache_key in shortened_urls_cache:
+        return shortened_urls_cache[cache_key]
 
     try:
         alias = generate_random_alphanumeric()
-        # Use dynamic shortner settings from client if available
-        short_url = getattr(client, 'short_url', SHORT_URL)
-        short_api = getattr(client, 'short_api', SHORT_API)
-        
         api_url = f"https://{short_url}/api?api={short_api}&url={url}&alias={alias}"
         response = requests.get(api_url)
         rjson = response.json()
@@ -41,14 +42,14 @@ def get_short(url, client):
             original_short_link = rjson.get("shortenedUrl", url)
             
             # --- CUSTOM DOMAIN REDIRECT LOGIC ---
-            # 1. Encode the lksfy link to Base64
+            # 1. Encode the short link to Base64
             encoded_link = base64.b64encode(original_short_link.encode("utf-8")).decode("utf-8")
             
             # 2. Build the new sukuna.site link
             secure_domain_link = f"https://sukuna.site/?to={encoded_link}"
             
             # 3. Save to cache and return the new custom domain link
-            shortened_urls_cache[url] = secure_domain_link
+            shortened_urls_cache[cache_key] = secure_domain_link
             return secure_domain_link
             # ------------------------------------
             
@@ -99,7 +100,7 @@ async def shortner_panel(client, query_or_message):
 <blockquote>**≡ ᴜꜱᴇ ᴛʜᴇ ʙᴜᴛᴛᴏɴꜱ ʙᴇʟᴏᴡ ᴛᴏ ᴄᴏɴꜰɪɢᴜʀᴇ ʏᴏᴜʀ ꜱʜᴏʀᴛɴᴇʀ ꜱᴇᴛᴛɪɴɢꜱ!**</blockquote>"""
     
     reply_markup = InlineKeyboardMarkup([
-        [InlineKeyboardButton(f'• {toggle_text} ꜱʜᴏʀᴛɴᴇʀ •', 'toggle_shortner'), InlineKeyboardButton('• ᴀᴅᴅ ꜱʜᴏʀᴛɴᴇʀ •', 'add_shortner')],
+        [InlineKeyboardButton(f'• {toggle_text} ꜱʜᴏʀᴛɴᴇʀ •', 'toggle_shortner'), InlineKeyboardButton('• ᴄʜᴀɴɢᴇ ꜱʜᴏʀᴛɴᴇʀ •', 'change_shortner')],
         [InlineKeyboardButton('• ꜱᴇᴛ ᴛᴜᴛᴏʀɪᴀʟ ʟɪɴᴋ •', 'set_tutorial_link')],
         [InlineKeyboardButton('• ᴛᴇꜱᴛ ꜱʜᴏʀᴛɴᴇʀ •', 'test_shortner')],
         [InlineKeyboardButton('◂ ʙᴀᴄᴋ ᴛᴏ ꜱᴇᴛᴛɪɴɢꜱ', 'settings')] if hasattr(query_or_message, 'message') else []
@@ -135,6 +136,7 @@ async def toggle_shortner(client: Client, query: CallbackQuery):
     current_status = getattr(client, 'shortner_enabled', True)
     new_status = not current_status
     client.shortner_enabled = new_status
+    shortened_urls_cache.clear()
     
     # Save to database
     await client.mongodb.set_shortner_status(new_status)
@@ -147,8 +149,8 @@ async def toggle_shortner(client: Client, query: CallbackQuery):
 
 #===============================================================#
 
-@Client.on_callback_query(filters.regex("^add_shortner$"))
-async def add_shortner(client: Client, query: CallbackQuery):
+@Client.on_callback_query(filters.regex("^(change_shortner|add_shortner)$"))
+async def change_shortner(client: Client, query: CallbackQuery):
     if not query.from_user.id in client.admins:
         return await query.answer('❌ ᴏɴʟʏ ᴀᴅᴍɪɴꜱ ᴄᴀɴ ᴜꜱᴇ ᴛʜɪꜱ!', show_alert=True)
     
@@ -157,7 +159,7 @@ async def add_shortner(client: Client, query: CallbackQuery):
     current_url = getattr(client, 'short_url', SHORT_URL)
     current_api = getattr(client, 'short_api', SHORT_API)
     
-    msg = f"""<blockquote>**ꜱᴇᴛ ꜱʜᴏʀᴛɴᴇʀ ꜱᴇᴛᴛɪɴɢꜱ:**</blockquote>
+    msg = f"""<blockquote>**ᴄʜᴀɴɢᴇ ꜱʜᴏʀᴛɴᴇʀ ꜱᴇᴛᴛɪɴɢꜱ:**</blockquote>
 **ᴄᴜʀʀᴇɴᴛ ꜱᴇᴛᴛɪɴɢꜱ:**
 • **ᴜʀʟ:** `{current_url}`
 • **ᴀᴘɪ:** `{current_api[:20]}...`
@@ -165,7 +167,7 @@ async def add_shortner(client: Client, query: CallbackQuery):
 __<blockquote>**≡ ꜱᴇɴᴅ ɴᴇᴡ ꜱʜᴏʀᴛɴᴇʀ ᴜʀʟ ᴀɴᴅ ᴀᴘɪ ɪɴ ᴛʜɪꜱ ꜰᴏʀᴍᴀᴛ ɪɴ ᴛʜᴇ ɴᴇxᴛ 60 ꜱᴇᴄᴏɴᴅꜱ!**</blockquote>__
 
 **ꜰᴏʀᴍᴀᴛ:** `ᴜʀʟ ᴀᴘɪ`
-**ᴇxᴀᴍᴘʟᴇ:** `inshorturl.com 9435894656863495834957348`"""
+**ᴇxᴀᴍᴘʟᴇ:** `shortxlinks.com 79d083375a3a6d9a1554ff6507494e72154bcb59`"""
     
     await query.message.edit_text(msg)
     try:
@@ -182,12 +184,13 @@ __<blockquote>**≡ ꜱᴇɴᴅ ɴᴇᴡ ꜱʜᴏʀᴛɴᴇʀ ᴜʀʟ ᴀɴᴅ �
                 # Update both settings
                 client.short_url = new_url
                 client.short_api = new_api
+                shortened_urls_cache.clear()
                 
                 # Save to database
                 await client.mongodb.update_shortner_setting('short_url', new_url)
                 await client.mongodb.update_shortner_setting('short_api', new_api)
                 
-                await query.message.edit_text(f"**✓ ꜱʜᴏʀᴛɴᴇʀ ꜱᴇᴛᴛɪɴɢꜱ ᴜᴘᴅᴀᴛᴇᴅ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ!**\n\n**ɴᴇᴡ ᴜʀʟ:** `{new_url}`\n**ɴᴇᴡ ᴀᴘɪ:** `{new_api[:20]}...`", 
+                await query.message.edit_text(f"**✓ ꜱʜᴏʀᴛɴᴇʀ ᴄʜᴀɴɢᴇᴅ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ!**\n\n**ɴᴇᴡ ᴜʀʟ:** `{new_url}`\n**ɴᴇᴡ ᴀᴘɪ:** `{new_api[:20]}...`\n\n__⚡ All links (new and existing) will now use this shortener.__", 
                                             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('◂ ʙᴀᴄᴋ', 'shortner')]]))
             else:
                 await query.message.edit_text("**✗ ɪɴᴠᴀʟɪᴅ ꜰᴏʀᴍᴀᴛ! ᴘʟᴇᴀꜱᴇ ᴄʜᴇᴄᴋ ᴜʀʟ ᴀɴᴅ ᴀᴘɪ ᴋᴇʏ.**", 
