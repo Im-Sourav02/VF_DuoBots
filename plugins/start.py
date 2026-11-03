@@ -1,7 +1,7 @@
 import asyncio
 import re
 
-from pyrogram import Client, filters
+from pyrogram import Client, filters, StopPropagation
 from pyrogram.errors import FloodWait
 from pyrogram.types import Message
 
@@ -95,21 +95,27 @@ async def start_command(client: Client, message: Message):
 
     # 2. Check if banned
     if await client.mongodb.is_banned(user_id):
-        return await message.reply("**You have been banned from using this bot!**")
+        await message.reply("**You have been banned from using this bot!**")
+        raise StopPropagation
 
     parts = message.text.split(" ", 1)
     payload = parts[1].strip() if len(parts) > 1 else ""
 
     if ui.is_link_bot(client):
         if payload:
-            return await _open_bot2_link(client, message, payload)
-        return await _send_home(client, message)
+            await _open_bot2_link(client, message, payload)
+        else:
+            await _send_home(client, message)
+        raise StopPropagation
 
     if payload.startswith(VERIFY_PREFIX):
-        return await _redeem_verification(client, message, payload[len(VERIFY_PREFIX):])
+        await _redeem_verification(client, message, payload[len(VERIFY_PREFIX):])
+        raise StopPropagation
     if payload:
-        return await _open_file_link(client, message, payload)
-    return await _send_home(client, message)
+        await _open_file_link(client, message, payload)
+        raise StopPropagation
+    await _send_home(client, message)
+    raise StopPropagation
 
 
 async def _send_home(client: Client, message: Message):
@@ -422,7 +428,7 @@ async def _deliver(client: Client, message: Message, messages_list: list) -> lis
 @Client.on_message(filters.command('request') & filters.private)
 async def request_command(client: Client, message: Message):
     if ui.is_link_bot(client):
-        return  # Only 𝘚𝘢𝘥𝘪𝘦 𝘚𝘪𝘯𝘬 exposes this feature
+        raise StopPropagation
     user_id  = message.from_user.id
     is_admin = user_id in client.admins
 
@@ -461,7 +467,7 @@ async def request_command(client: Client, message: Message):
 @Client.on_message(filters.command('profile') & filters.private)
 async def my_plan(client: Client, message: Message):
     if ui.is_link_bot(client):
-        return  # Only 𝘚𝘢𝘥𝘪𝘦 𝘚𝘪𝘯𝘬 exposes premium plans
+        raise StopPropagation
     user_id  = message.from_user.id
     is_admin = user_id in client.admins
 

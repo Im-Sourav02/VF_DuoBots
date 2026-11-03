@@ -19,10 +19,10 @@ async def texts(client, query):
 <pre>{cap_display}</pre>
     """
     reply_markup = InlineKeyboardMarkup([
-        [InlineKeyboardButton('ꜱᴛᴀʀᴛ ᴛᴇxᴛ', 'start_txt'), InlineKeyboardButton('ꜰꜱᴜʙ ᴛᴇxᴛ', 'fsub_txt')],
-        [InlineKeyboardButton('ʀᴇᴘʟʏ ᴛᴇxᴛ', 'reply_txt'), InlineKeyboardButton('ᴀʙᴏᴜᴛ ᴛᴇxᴛ', 'about_txt')],
-        [InlineKeyboardButton('📝 ᴄᴜsᴛᴏᴍ ᴄᴀᴘᴛɪᴏɴ', 'custom_caption_txt')],
-        [InlineKeyboardButton('◂ ʙᴀᴄᴋ', 'settings')]
+        [InlineKeyboardButton('ꜱᴛᴀʀᴛ ᴛᴇxᴛ', callback_data='start_txt'), InlineKeyboardButton('ꜰꜱᴜʙ ᴛᴇxᴛ', callback_data='fsub_txt')],
+        [InlineKeyboardButton('ʀᴇᴘʟʏ ᴛᴇxᴛ', callback_data='reply_txt'), InlineKeyboardButton('ᴀʙᴏᴜᴛ ᴛᴇxᴛ', callback_data='about_txt')],
+        [InlineKeyboardButton('📝 ᴄᴜsᴛᴏᴍ ᴄᴀᴘᴛɪᴏɴ', callback_data='custom_caption_txt')],
+        [InlineKeyboardButton('◂ ʙᴀᴄᴋ', callback_data='settings')]
     ])
     await query.message.edit_text(msg, reply_markup=reply_markup)
     return

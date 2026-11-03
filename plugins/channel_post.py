@@ -3,43 +3,75 @@ from pyrogram import filters, Client, ContinuePropagation
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.errors import FloodWait
 from helper.helper_func import encode, NO_PREVIEW
-import re
+from helper import ui
+
+
+def _is_command_message(message: Message) -> bool:
+    if getattr(message, "command", None):
+        return True
+    raw = message.text or message.caption
+    if raw is None:
+        return False
+    stripped = str(raw).lstrip("\ufeff\u200b\u200c\u200d\u2060 \t")
+    if stripped.startswith(("/", "!")):
+        return True
+    for ent in list(message.entities or []) + list(message.caption_entities or []):
+        ent_type = getattr(ent, "type", None)
+        name = getattr(ent_type, "name", None) or str(ent_type)
+        if "BOT_COMMAND" in name.upper():
+            return True
+    return False
+
 
 #===============================================================#
-# channel_post — Only active on Bot 1 (𝘚𝘢𝘥𝘪𝘦 𝘚𝘪𝘯𝘬)
-# Bot 2 and other bots pass control to next handler.
+# channel_post — Bot 1 filestore catch-all (group 1). Commands and
+# active /batch asks skip this handler so /start and /broadcast
+# never get the unused-message reply.
 #===============================================================#
 
-is_command = filters.create(
-    lambda _, __, m: bool(
-        (m.text and m.text.strip().startswith(('/', '!'))) or
-        (m.caption and m.caption.strip().startswith(('/', '!')))
-    )
-)
+def _has_active_listener(client: Client, message: Message) -> bool:
+    chat_id = getattr(message.chat, "id", None)
+    user_id = getattr(message.from_user, "id", None)
+    for listener in list(getattr(client, "_listeners", []) or []):
+        future = listener.get("future")
+        if future is None or future.done():
+            continue
+        if listener.get("chat_id") is not None and listener["chat_id"] != chat_id:
+            continue
+        if listener.get("user_id") is not None and listener["user_id"] != user_id:
+            continue
+        return True
+    return False
 
-@Client.on_message(filters.private & ~is_command)
+
+# Group 1 so /start /broadcast /batch always run first. Commands still skip here
+# because later groups run unless the earlier handler raises StopPropagation.
+@Client.on_message(filters.private, group=1)
 async def channel_post(client: Client, message: Message):
-    # Bot 2 — pass control to the next matching handler
-    if getattr(client, 'bot_type', 'bot1') not in ('bot1', 'rin'):
+    if not ui.is_filestore(client):
         raise ContinuePropagation
 
-    # Double check to never catch commands
-    if (message.text and message.text.strip().startswith(('/', '!'))) or \
-       (message.caption and message.caption.strip().startswith(('/', '!'))):
+    if _is_command_message(message):
+        raise ContinuePropagation
+
+    if message.service:
+        raise ContinuePropagation
+
+    if _has_active_listener(client, message):
         raise ContinuePropagation
 
     if message.from_user.id not in client.admins:
         return await message.reply(client.reply_text)
 
-    reply_text = await message.reply_text("Please Wait...!")
+    wait_msg = await message.reply_text("Please Wait...!")
     try:
         post_message = await message.copy(chat_id=client.db, disable_notification=True)
     except FloodWait as e:
         await asyncio.sleep(e.value)
         post_message = await message.copy(chat_id=client.db, disable_notification=True)
     except Exception as e:
-        print(e)
-        await reply_text.edit_text("Something went Wrong..!")
+        client.LOGGER(__name__, client.name).warning(f"channel_post copy failed: {e}")
+        await wait_msg.edit_text("Something went Wrong..!")
         return
 
     converted_id  = post_message.id * abs(client.db)
@@ -47,15 +79,12 @@ async def channel_post(client: Client, message: Message):
     base64_string = await encode(string)
     link          = f"https://t.me/{client.username}?start={base64_string}"
 
-    # Auto-chain to Bot 2 (Bot 1 only)
-    bot2_link = None
-    if getattr(client, 'bot_type', 'bot1') in ('bot1', 'rin'):
-        from plugins.link_generator import _auto_chain_to_bot2, _build_reply
-        bot2_link = await _auto_chain_to_bot2(client, link)
+    from plugins.link_generator import _auto_chain_to_bot2, _build_reply
+    bot2_link = await _auto_chain_to_bot2(client, link)
 
     if bot2_link:
         reply_text_str, reply_markup = _build_reply(link, bot2_link)
-        await reply_text.edit(
+        await wait_msg.edit(
             reply_text_str,
             reply_markup=reply_markup,
             link_preview_options=NO_PREVIEW
@@ -64,7 +93,7 @@ async def channel_post(client: Client, message: Message):
         reply_markup = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔁 Share URL", url=f"https://telegram.me/share/url?url={link}")]
         ])
-        await reply_text.edit(
+        await wait_msg.edit(
             f"<b>Here is your link</b>\n\n{link}",
             reply_markup=reply_markup,
             link_preview_options=NO_PREVIEW
@@ -73,12 +102,12 @@ async def channel_post(client: Client, message: Message):
     if not client.disable_btn:
         await post_message.edit_reply_markup(reply_markup)
 
+
 #===============================================================#
 
 @Client.on_message(filters.channel & filters.incoming)
 async def new_post(client: Client, message: Message):
-    # Only Bot 1 watches its DB channel for incoming posts
-    if getattr(client, 'bot_type', 'bot1') not in ('bot1', 'rin'):
+    if not ui.is_filestore(client):
         raise ContinuePropagation
     if message.chat.id != client.db:
         return
@@ -95,5 +124,4 @@ async def new_post(client: Client, message: Message):
     try:
         await message.edit_reply_markup(reply_markup)
     except Exception as e:
-        print(e)
-        pass
+        client.LOGGER(__name__, client.name).warning(f"new_post markup failed: {e}")

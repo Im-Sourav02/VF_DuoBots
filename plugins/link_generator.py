@@ -1,6 +1,7 @@
-from pyrogram import Client, filters
+from pyrogram import Client, filters, StopPropagation
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from helper.helper_func import encode, get_message_id, NO_PREVIEW
+from helper import ui
 from config import LOGGER, BOT1_DISPLAY_NAME, BOT2_DISPLAY_NAME
 
 async def get_db_channels_info(client):
@@ -52,21 +53,29 @@ async def _auto_chain_to_bot2(client: Client, bot1_link: str) -> str | None:
         return None  # Bot 2 not configured — skip auto-chain
 
     try:
-        sent = await client.send_message(
-            chat_id=bot2_db_channel,
-            text=bot1_link,
-            link_preview_options=NO_PREVIEW,
-        )
+        try:
+            sent = await client.send_message(
+                chat_id=bot2_db_channel,
+                text=bot1_link,
+                link_preview_options=NO_PREVIEW,
+                disable_notification=True,
+            )
+        except TypeError:
+            sent = await client.send_message(
+                chat_id=bot2_db_channel,
+                text=bot1_link,
+                disable_notification=True,
+            )
         converted_id = sent.id * abs(bot2_db_channel)
         string       = f"get-{converted_id}"
         b64_token    = await encode(string)
         bot2_link    = f"https://t.me/{bot2_bot_username}?start={b64_token}"
         client.LOGGER(__name__, client.name).info(
-            f"Auto-chain: stored Bot1 link in Bot2 DB channel (msg_id={sent.id}, token={b64_token})"
+            f"Auto-chain: stored Bot1 link in Bot2 DB channel (msg_id={sent.id})"
         )
         return bot2_link
     except Exception as e:
-        client.LOGGER(__name__, client.name).warning(f"Auto-chain to Bot2 failed: {e}")
+        client.LOGGER(__name__, client.name).warning(f"Auto-chain to Bot2 failed: {type(e).__name__}: {e}")
         return None
 
 _auto_chain_to_sephra = _auto_chain_to_bot2  # Backward compatibility alias
@@ -96,16 +105,29 @@ def _build_reply(bot1_link: str, bot2_link: str | None) -> tuple[str, InlineKeyb
     return text, reply_markup
 
 
+async def _send_link_result(client: Client, user_id: int, text: str, reply_markup: InlineKeyboardMarkup):
+    try:
+        await client.send_message(
+            user_id,
+            text,
+            reply_markup=reply_markup,
+            link_preview_options=NO_PREVIEW,
+        )
+    except TypeError:
+        await client.send_message(user_id, text, reply_markup=reply_markup)
+
+
 #===============================================================#
 # /batch
 #===============================================================#
 
 @Client.on_message(filters.private & filters.command('batch'))
 async def batch(client: Client, message: Message):
+    if not ui.is_filestore(client):
+        raise StopPropagation
     if message.from_user.id not in client.admins:
-        return await message.reply(client.reply_text)
-    if getattr(client, 'bot_type', 'bot1') not in ('bot1', 'bot2', 'rin', 'sephra'):
-        return
+        await message.reply(client.reply_text)
+        raise StopPropagation
 
     db_channels_info = await get_db_channels_info(client)
 
@@ -117,6 +139,7 @@ async def batch(client: Client, message: Message):
 
 <blockquote>ᴏʀ sᴇɴᴅ ᴛʜᴇ ᴅʙ ᴄʜᴀɴɴᴇʟ ᴘᴏsᴛ ʟɪɴᴋ</blockquote>""",
                 chat_id=message.from_user.id,
+                user_id=message.from_user.id,
                 filters=(filters.forwarded | (filters.text & ~filters.forwarded)),
                 timeout=60
             )
@@ -139,6 +162,7 @@ async def batch(client: Client, message: Message):
 
 <blockquote>ᴏʀ sᴇɴᴅ ᴛʜᴇ ᴅʙ ᴄʜᴀɴɴᴇʟ ᴘᴏsᴛ ʟɪɴᴋ</blockquote>""",
                 chat_id=message.from_user.id,
+                user_id=message.from_user.id,
                 filters=(filters.forwarded | (filters.text & ~filters.forwarded)),
                 timeout=60
             )
@@ -161,14 +185,10 @@ async def batch(client: Client, message: Message):
     base64_string = await encode(string)
     bot1_link     = f"https://t.me/{client.username}?start={base64_string}"
 
-    # ── Auto-chain to Bot 2 (Bot 1 only) ──────────────────
-    bot2_link = None
-    if getattr(client, 'bot_type', 'bot1') in ('bot1', 'rin'):
-        bot2_link = await _auto_chain_to_bot2(client, bot1_link)
-
+    bot2_link = await _auto_chain_to_bot2(client, bot1_link)
     reply_text, reply_markup = _build_reply(bot1_link, bot2_link)
-    await second_message.reply_text(reply_text, reply_markup=reply_markup,
-                                    link_preview_options=NO_PREVIEW)
+    await _send_link_result(client, message.from_user.id, reply_text, reply_markup)
+    raise StopPropagation
 
 #===============================================================#
 # /genlink
@@ -176,10 +196,11 @@ async def batch(client: Client, message: Message):
 
 @Client.on_message(filters.private & filters.command('genlink'))
 async def link_generator(client: Client, message: Message):
+    if not ui.is_filestore(client):
+        raise StopPropagation
     if message.from_user.id not in client.admins:
-        return await message.reply(client.reply_text)
-    if getattr(client, 'bot_type', 'bot1') not in ('bot1', 'bot2', 'rin', 'sephra'):
-        return
+        await message.reply(client.reply_text)
+        raise StopPropagation
 
     db_channels_info = await get_db_channels_info(client)
 
@@ -192,6 +213,7 @@ async def link_generator(client: Client, message: Message):
 
 <blockquote>ᴏʀ sᴇɴᴅ ᴛʜᴇ ᴅʙ ᴄʜᴀɴɴᴇʟ ᴘᴏsᴛ ʟɪɴᴋ</blockquote>""",
                 chat_id=message.from_user.id,
+                user_id=message.from_user.id,
                 filters=(filters.forwarded | (filters.text & ~filters.forwarded)),
                 timeout=60
             )
@@ -209,14 +231,10 @@ async def link_generator(client: Client, message: Message):
     base64_string = await encode(f"get-{msg_id * abs(source_channel_id)}")
     bot1_link     = f"https://t.me/{client.username}?start={base64_string}"
 
-    # ── Auto-chain to Bot 2 (Bot 1 only) ──────────────────
-    bot2_link = None
-    if getattr(client, 'bot_type', 'bot1') in ('bot1', 'rin'):
-        bot2_link = await _auto_chain_to_bot2(client, bot1_link)
-
+    bot2_link = await _auto_chain_to_bot2(client, bot1_link)
     reply_text, reply_markup = _build_reply(bot1_link, bot2_link)
-    await channel_message.reply_text(reply_text, reply_markup=reply_markup,
-                                     link_preview_options=NO_PREVIEW)
+    await _send_link_result(client, message.from_user.id, reply_text, reply_markup)
+    raise StopPropagation
 
 #===============================================================#
 # /nbatch
@@ -224,10 +242,11 @@ async def link_generator(client: Client, message: Message):
 
 @Client.on_message(filters.private & filters.command("nbatch"))
 async def nbatch(client: Client, message: Message):
+    if not ui.is_filestore(client):
+        raise StopPropagation
     if message.from_user.id not in client.admins:
-        return await message.reply(client.reply_text)
-    if getattr(client, 'bot_type', 'bot1') not in ('bot1', 'bot2', 'rin', 'sephra'):
-        return
+        await message.reply(client.reply_text)
+        raise StopPropagation
 
     args = message.text.split()
     if len(args) < 2 or not args[1].isdigit():
@@ -244,6 +263,7 @@ async def nbatch(client: Client, message: Message):
 
 {db_channels_info}""",
                 chat_id=message.from_user.id,
+                user_id=message.from_user.id,
                 filters=(filters.text & ~filters.forwarded),
                 timeout=60
             )
@@ -264,11 +284,7 @@ async def nbatch(client: Client, message: Message):
     base64_string = await encode(string)
     bot1_link     = f"https://t.me/{client.username}?start={base64_string}"
 
-    # ── Auto-chain to Bot 2 (Bot 1 only) ──────────────────
-    bot2_link = None
-    if getattr(client, 'bot_type', 'bot1') in ('bot1', 'rin'):
-        bot2_link = await _auto_chain_to_bot2(client, bot1_link)
-
+    bot2_link = await _auto_chain_to_bot2(client, bot1_link)
     reply_text, reply_markup = _build_reply(bot1_link, bot2_link)
-    await first_message.reply_text(reply_text, reply_markup=reply_markup,
-                                   link_preview_options=NO_PREVIEW)
+    await _send_link_result(client, message.from_user.id, reply_text, reply_markup)
+    raise StopPropagation

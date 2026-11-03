@@ -24,6 +24,10 @@ class ConversationMixin:
         self.add_handler(MessageHandler(self._resolve_listeners), group=self.LISTENER_GROUP)
 
     async def _resolve_listeners(self, client, message):
+        # Never swallow slash-commands (e.g. /start during an active /batch ask).
+        raw = str(message.text or message.caption or "").lstrip()
+        if raw.startswith(("/", "!")):
+            return
         for listener in list(getattr(self, "_listeners", [])):
             future = listener["future"]
             if future.done():
@@ -32,8 +36,12 @@ class ConversationMixin:
                 continue
             if listener["user_id"] is not None and getattr(message.from_user, "id", None) != listener["user_id"]:
                 continue
-            if listener["filters"] is not None and not await MessageHandler(None, listener["filters"]).check(client, message):
-                continue
+            if listener["filters"] is not None:
+                try:
+                    if not await listener["filters"](client, message):
+                        continue
+                except Exception:
+                    continue
             future.set_result(message)
             raise StopPropagation
 

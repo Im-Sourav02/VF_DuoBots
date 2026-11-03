@@ -3,10 +3,12 @@ import os
 import json
 import asyncio
 from aiohttp import web
-from plugins import web_server
 
 from pyrogram import Client
 from pyrogram.enums import ParseMode
+from helper.kurigram_compat import apply_inline_keyboard_compat
+apply_inline_keyboard_compat()
+from plugins import web_server
 import sys
 from datetime import datetime
 from config import (

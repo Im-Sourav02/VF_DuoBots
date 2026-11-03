@@ -2,7 +2,7 @@ import time
 import asyncio
 import re
 import aiohttp
-from pyrogram import Client, filters
+from pyrogram import Client, filters, StopPropagation
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.errors import FloodWait, UserIsBlocked, InputUserDeactivated, ChatForwardsRestricted
 
@@ -392,8 +392,8 @@ def parse_broadcast_modes(args):
 
 @Client.on_message(filters.private & filters.command(['broadcast', 'pbroadcast']))
 async def broadcast_command(client, message):
-    if not message.from_user.id in client.admins:
-        return
+    if message.from_user.id not in client.admins:
+        raise StopPropagation
         
     args = message.text.split()[1:]
     
@@ -474,6 +474,7 @@ async def broadcast_command(client, message):
         )
         await asyncio.sleep(30)
         await msg.delete()
+    raise StopPropagation
 
 #===============================================================#
 

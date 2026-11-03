@@ -20,6 +20,9 @@ class Screen(NamedTuple):
 def is_link_bot(client) -> bool:
     return getattr(client, "bot_type", "bot1") in ("bot2", "sephra")
 
+def is_filestore(client) -> bool:
+    return not is_link_bot(client)
+
 def is_credits_bot(client) -> bool:
     return bool(getattr(client, "credits_enabled", False))
 
@@ -89,13 +92,13 @@ def layout(*rows) -> list:
     return [[b for b in row if b] for row in rows if any(row)]
 
 def close_button() -> dict:
-    return button("🔴 CLOSE IT", "close", style="danger")
+    return button("ᴄʟᴏsᴇ", "close", style="danger")
 
 def back_button() -> dict:
-    return button("BACK", "start")
+    return button("ʙᴀᴄᴋ", "start")
 
 def skip_ads_button() -> dict | None:
-    return button(f"SKIP ADS ({PREMIUM_PRICE_TEXT.upper()})", url=PREMIUM_LINK, style="success")
+    return button(f"𝘀ᴋɪᴘ ᴀᴅ𝘀 ({PREMIUM_PRICE_TEXT.upper()})", url=PREMIUM_LINK, style="success")
 
 
 # ── Screens ─────────────────────────────────────────────────────────────────
@@ -110,17 +113,17 @@ async def home_screen(client, user) -> Screen:
         caption += "\n" + panel
     show_settings = user.id in client.admins
     buttons = layout(
-        [button("HOW TO USE", "help"), button("CHANNELS", "channels")],
-        [button("PREMIUM PLANS", "premium")],
-        [button("SETTINGS", "settings", style="success")] if show_settings else [],
+        [button("ʜᴏᴡ ᴛᴏ ᴜsᴇ", "help"), button("ᴄʜᴀɴɴᴇʟ𝘀", "channels")],
+        [button("ᴘʀᴇᴍɪᴜᴍ ᴘʟᴀɴ𝘀", "premium")],
+        [button("sᴇᴛᴛɪɴɢs", "settings", style="success")] if show_settings else [],
         [close_button()],
     )
     return Screen(client.messages.get("START_PHOTO", ""), caption, buttons)
 
 def help_screen(client, user) -> Screen:
     buttons = layout(
-        [button("PREMIUM", "premium", style="success"), button("OWNER", url=OWNER_LINK, style="default")],
-        [button("SUPPORT", url=SUPPORT_LINK, style="default"), back_button()],
+        [button("ᴘʀᴇᴍɪᴜᴍ", "premium", style="success"), button("ᴏᴡɴᴇʀ", url=OWNER_LINK, style="default")],
+        [button("𝘀ᴜᴘᴘᴏʀᴛ", url=SUPPORT_LINK, style="default"), back_button()],
         [close_button()],
     )
     return Screen(_photo(client, "HELP_PHOTO"), fill(client.messages.get("HELP", ""), client, user), buttons)
@@ -139,7 +142,7 @@ async def premium_screen(client, user) -> Screen:
     if panel:
         caption += "\n" + panel
     buttons = layout(
-        [button("BUY PREMIUM", url=PREMIUM_LINK, style="success")],
+        [button("ʙᴜʏ ᴘʀᴇᴍɪᴜᴍ", url=PREMIUM_LINK, style="success")],
         [back_button(), close_button()],
     )
     return Screen(_photo(client, "PREMIUM_PHOTO"), caption, buttons)
@@ -148,7 +151,7 @@ def verify_screen(client, user, short_link: str, balance: int) -> Screen:
     caption = fill(client.messages.get("SHORT_MSG", ""), client, user) + "\n" + balance_panel(balance)
     tutorial = getattr(client, "tutorial_link", "")
     buttons = layout(
-        [button("OPEN LINK", url=short_link), button("TUTORIAL", url=tutorial)],
+        [button("ᴏᴘᴇɴ ʟɪɴᴋ", url=short_link), button("ᴛᴜᴛᴏʀɪᴀʟ", url=tutorial)],
         [skip_ads_button()],
         [close_button()],
     )
@@ -161,7 +164,7 @@ def verified_screen(client, user, file_link: str, balance: int) -> Screen:
         + f"(ᴜsᴇs {CREDITS_PER_ACCESS})</blockquote>"
     )
     buttons = layout(
-        [button("CLICK HERE", url=file_link)],
+        [button("ᴏᴘᴇɴ ʟɪɴᴋ", url=file_link)],
         [skip_ads_button()],
         [close_button()],
     )
@@ -170,7 +173,7 @@ def verified_screen(client, user, file_link: str, balance: int) -> Screen:
 def link_screen(client, user, link: str, time_str: str) -> Screen:
     caption = fill(client.messages.get("LINK", "{link}"), client, user, link=html.escape(link), time=time_str)
     buttons = layout(
-        [button("OPEN LINK", url=link)],
+        [button("ᴏᴘᴇɴ ʟɪɴᴋ", url=link)],
         [back_button(), close_button()],
     )
     return Screen(_photo(client, "LINK_PHOTO"), caption, buttons)
