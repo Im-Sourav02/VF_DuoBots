@@ -1,9 +1,12 @@
 aiohttp
 dnspython
-pyrofork==2.3.50
+# Kurigram is the maintained Pyrogram fork. Both bot clients import `pyrogram` from this package.
+# Official install: pip install kurigram   (https://pypi.org/project/Kurigram/  https://kurigram.icu)
+kurigram==2.2.26
 humanize
 psutil
 motor
+pymongo
 markdown
 asyncio
 TgCrypto

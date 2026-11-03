@@ -12,8 +12,10 @@ from datetime import datetime
 from config import (
     LOGGER, PORT, OWNER_ID,
     SHORT_URL, SHORT_API, SHORT_TUT,
+    BOT1_DISPLAY_NAME, BOT2_DISPLAY_NAME,
 )
 from helper import MongoDB
+from helper.conversation import ConversationMixin
 
 version = "v2.0.0"
 
@@ -22,7 +24,7 @@ version = "v2.0.0"
 # Bot — Shared filestore bot class (used by both Rin and Sephra)
 # ═══════════════════════════════════════════════════════════════
 
-class Bot(Client):
+class Bot(ConversationMixin, Client):
     def __init__(
         self,
         session, workers, db, fsub, token, admins, messages,
@@ -33,6 +35,7 @@ class Bot(Client):
         bot2_bot_username="",     # For Bot1: used to build Bot2 deep-links
         sephra_db_channel=0,      # Legacy alias
         sephra_bot_username="",   # Legacy alias
+        credits_enabled=False,    # MongoDB credits + verification tokens (𝘚𝘢𝘥𝘪𝘦 𝘚𝘪𝘯𝘬 only)
     ):
         super().__init__(
             name=session,
@@ -68,11 +71,13 @@ class Bot(Client):
         self.bot2_bot_username   = bot2_bot_username or sephra_bot_username
         self.sephra_db_channel   = self.bot2_db_channel
         self.sephra_bot_username = self.bot2_bot_username
+        self.credits_enabled     = credits_enabled
 
     # ── Startup ──────────────────────────────────────────────
 
     async def start(self):
         await super().start()
+        self._init_conversations()
         usr_bot_me = await self.get_me()
         self.uptime = datetime.now()
 
@@ -196,6 +201,14 @@ class Bot(Client):
         except Exception as e:
             self.LOGGER(__name__, self.name).warning(f"Error purging expired premium users: {e}")
 
+        # ── Credits indexes (TTL for verification tokens) ─────
+        if self.credits_enabled:
+            try:
+                await self.mongodb.ensure_credit_indexes()
+                self.LOGGER(__name__, self.name).info("Credits enabled (verification-token indexes ready).")
+            except Exception as e:
+                self.LOGGER(__name__, self.name).warning(f"Could not create credit indexes: {type(e).__name__}: {e}")
+
         # ── Verify primary DB channel ─────────────────────────
         # Both Rin AND Sephra must have a valid DB channel.
         try:
@@ -222,7 +235,7 @@ class Bot(Client):
 
         # ── Notify owner ──────────────────────────────────────
         try:
-            label = "𝘚𝘢𝘥𝘪𝘦 𝘚𝘪𝘯𝘬" if self.bot_type in ("bot1", "rin") else "𝖶𝖺𝗇𝖽𝖺"
+            label = BOT1_DISPLAY_NAME if self.bot_type in ("bot1", "rin") else BOT2_DISPLAY_NAME
             restart_message = f"<b>›› [{label}] ʜᴇʏ sᴇɴᴘᴀɪ!!\n ɪ'ᴍ ᴀʟɪᴠᴇ ɴᴏᴡ 🍃...</b>"
             await self.send_message(chat_id=self.owner, text=restart_message)
         except Exception as e:

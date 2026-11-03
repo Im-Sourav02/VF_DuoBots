@@ -1,7 +1,7 @@
 from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
-from helper.helper_func import encode, get_message_id
-from config import LOGGER
+from helper.helper_func import encode, get_message_id, NO_PREVIEW
+from config import LOGGER, BOT1_DISPLAY_NAME, BOT2_DISPLAY_NAME
 
 async def get_db_channels_info(client):
     """Get formatted database channels information with links"""
@@ -55,7 +55,7 @@ async def _auto_chain_to_bot2(client: Client, bot1_link: str) -> str | None:
         sent = await client.send_message(
             chat_id=bot2_db_channel,
             text=bot1_link,
-            disable_web_page_preview=True
+            link_preview_options=NO_PREVIEW,
         )
         converted_id = sent.id * abs(bot2_db_channel)
         string       = f"get-{converted_id}"
@@ -77,15 +77,15 @@ def _build_reply(bot1_link: str, bot2_link: str | None) -> tuple[str, InlineKeyb
     if bot2_link:
         text = (
             f"<blockquote>✓ ʟɪɴᴋs ɢᴇɴᴇʀᴀᴛᴇᴅ sᴜᴄᴄᴇssꜰᴜʟʟʏ</blockquote>\n\n"
-            f"<blockquote>🔒 <b>𝘚𝘢𝘥𝘪𝘦 𝘚𝘪𝘯𝘬 Link</b> (internal — do not share directly):</blockquote>\n"
+            f"<blockquote>🔒 <b>{BOT1_DISPLAY_NAME} Link</b> (internal — do not share directly):</blockquote>\n"
             f"<code>{bot1_link}</code>\n\n"
-            f"<blockquote>📥 <b>𝖶𝖺𝗇𝖽𝖺 Link</b> (use this in channel posts):</blockquote>\n"
+            f"<blockquote>📥 <b>{BOT2_DISPLAY_NAME} Link</b> (use this in channel posts):</blockquote>\n"
             f"<code>{bot2_link}</code>"
         )
         reply_markup = InlineKeyboardMarkup([
             [
-                InlineKeyboardButton("🔁 Share 𝘚𝘢𝘥𝘪𝘦 𝘚𝘪𝘯𝘬 URL", url=f"https://telegram.me/share/url?url={bot1_link}"),
-                InlineKeyboardButton("📥 Share 𝖶𝖺𝗇𝖽𝖺 URL",      url=f"https://telegram.me/share/url?url={bot2_link}"),
+                InlineKeyboardButton(f"🔁 Share {BOT1_DISPLAY_NAME} URL", url=f"https://telegram.me/share/url?url={bot1_link}"),
+                InlineKeyboardButton(f"📥 Share {BOT2_DISPLAY_NAME} URL", url=f"https://telegram.me/share/url?url={bot2_link}"),
             ]
         ])
     else:
@@ -127,8 +127,7 @@ async def batch(client: Client, message: Message):
             break
         else:
             await first_message.reply(
-                "<blockquote>✗ ᴇʀʀᴏʀ</blockquote>\n\nᴛʜɪs ꜰᴏʀᴡᴀʀᴅᴇᴅ ᴘᴏsᴛ ɪs ɴᴏᴛ ꜰʀᴏᴍ ᴍʏ ᴅʙ ᴄʜᴀɴɴᴇʟ",
-                quote=True
+                "<blockquote>✗ ᴇʀʀᴏʀ</blockquote>\n\nᴛʜɪs ꜰᴏʀᴡᴀʀᴅᴇᴅ ᴘᴏsᴛ ɪs ɴᴏᴛ ꜰʀᴏᴍ ᴍʏ ᴅʙ ᴄʜᴀɴɴᴇʟ"
             )
             continue
 
@@ -150,8 +149,7 @@ async def batch(client: Client, message: Message):
             break
         else:
             await second_message.reply(
-                "<blockquote>✗ ᴇʀʀᴏʀ</blockquote>\n\nᴛʜɪs ꜰᴏʀᴡᴀʀᴅᴇᴅ ᴘᴏsᴛ ɪs ɴᴏᴛ ꜰʀᴏᴍ ᴍʏ ᴅʙ ᴄʜᴀɴɴᴇʟ",
-                quote=True
+                "<blockquote>✗ ᴇʀʀᴏʀ</blockquote>\n\nᴛʜɪs ꜰᴏʀᴡᴀʀᴅᴇᴅ ᴘᴏsᴛ ɪs ɴᴏᴛ ꜰʀᴏᴍ ᴍʏ ᴅʙ ᴄʜᴀɴɴᴇʟ"
             )
             continue
 
@@ -169,8 +167,8 @@ async def batch(client: Client, message: Message):
         bot2_link = await _auto_chain_to_bot2(client, bot1_link)
 
     reply_text, reply_markup = _build_reply(bot1_link, bot2_link)
-    await second_message.reply_text(reply_text, quote=True, reply_markup=reply_markup,
-                                    disable_web_page_preview=True)
+    await second_message.reply_text(reply_text, reply_markup=reply_markup,
+                                    link_preview_options=NO_PREVIEW)
 
 #===============================================================#
 # /genlink
@@ -204,8 +202,7 @@ async def link_generator(client: Client, message: Message):
             break
         else:
             await channel_message.reply(
-                "<blockquote>✗ ᴇʀʀᴏʀ</blockquote>\n\nɴᴏᴛ ꜰʀᴏᴍ ᴍʏ ᴅʙ ᴄʜᴀɴɴᴇʟ",
-                quote=True
+                "<blockquote>✗ ᴇʀʀᴏʀ</blockquote>\n\nɴᴏᴛ ꜰʀᴏᴍ ᴍʏ ᴅʙ ᴄʜᴀɴɴᴇʟ"
             )
             continue
 
@@ -218,8 +215,8 @@ async def link_generator(client: Client, message: Message):
         bot2_link = await _auto_chain_to_bot2(client, bot1_link)
 
     reply_text, reply_markup = _build_reply(bot1_link, bot2_link)
-    await channel_message.reply_text(reply_text, quote=True, reply_markup=reply_markup,
-                                     disable_web_page_preview=True)
+    await channel_message.reply_text(reply_text, reply_markup=reply_markup,
+                                     link_preview_options=NO_PREVIEW)
 
 #===============================================================#
 # /nbatch
@@ -258,8 +255,7 @@ async def nbatch(client: Client, message: Message):
             break
         else:
             await first_message.reply(
-                "<blockquote>😫 ɪɴᴠᴀʟɪᴅ!</blockquote> sᴇɴᴅ ᴄᴏʀʀᴇᴄᴛ ᴅʙ ᴄʜᴀɴɴᴇʟ ᴍᴇssᴀɢᴇ ʟɪɴᴋ.",
-                quote=True
+                "<blockquote>😫 ɪɴᴠᴀʟɪᴅ!</blockquote> sᴇɴᴅ ᴄᴏʀʀᴇᴄᴛ ᴅʙ ᴄʜᴀɴɴᴇʟ ᴍᴇssᴀɢᴇ ʟɪɴᴋ."
             )
             continue
 
@@ -274,5 +270,5 @@ async def nbatch(client: Client, message: Message):
         bot2_link = await _auto_chain_to_bot2(client, bot1_link)
 
     reply_text, reply_markup = _build_reply(bot1_link, bot2_link)
-    await first_message.reply_text(reply_text, quote=True, reply_markup=reply_markup,
-                                   disable_web_page_preview=True)
+    await first_message.reply_text(reply_text, reply_markup=reply_markup,
+                                   link_preview_options=NO_PREVIEW)

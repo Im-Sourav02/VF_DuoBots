@@ -1,10 +1,9 @@
-from pyrogram import Client, filters
+from pyrogram import Client, filters, StopPropagation
 from pyrogram.types import CallbackQuery, Message, InlineKeyboardButton, InlineKeyboardMarkup
-from config import MSG_EFFECT, START_MSG, ABOUT_TXT, CHANNELS_TXT
 
 from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
-from pyrogram.errors.pyromod import ListenerTimeout
+from helper.conversation import ListenerTimeout
 
 #===============================================================#
 
@@ -281,114 +280,57 @@ async def quick_remove_db(client: Client, message: Message):
 
 #===============================================================#
 
-from helper.styled_buttons import edit_styled_message, to_pyrogram_markup
+from helper import ui
 
-async def _edit_msg(client: Client, query: CallbackQuery, text: str, reply_markup):
-    is_photo = bool(query.message.photo)
-    success = await edit_styled_message(
-        client=client,
-        chat_id=query.message.chat.id,
-        message_id=query.message.id,
-        text_or_caption=text,
-        reply_markup=reply_markup,
-        is_photo=is_photo
-    )
-    if not success:
-        try:
-            pyro_markup = to_pyrogram_markup(reply_markup)
-            if is_photo:
-                await query.message.edit_caption(caption=text, reply_markup=pyro_markup)
-            else:
-                await query.message.edit_text(text=text, reply_markup=pyro_markup)
-        except Exception:
-            pass
+_ADMIN_CALLBACKS = (
+    r"^(settings|settings_page_2|fsub|add_fsub|rm_fsub|photos|protect|toggle_get_files|toggle_watermark|"
+    r"auto_del|texts|rm_start_photo|rm_fsub_photo|add_start_photo|add_fsub_photo|"
+    r"custom_caption_txt|start_txt|fsub_txt|about_txt|reply_txt)$"
+)
+
+@Client.on_callback_query(filters.regex(_ADMIN_CALLBACKS), group=-1)
+async def admin_callback_guard(client: Client, query: CallbackQuery):
+    """These settings handlers have no per-handler admin check; block non-admins before they run."""
+    if query.from_user.id not in client.admins:
+        await query.answer('❌ ᴏɴʟʏ ᴀᴅᴍɪɴꜱ ᴄᴀɴ ᴜꜱᴇ ᴛʜɪꜱ!', show_alert=True)
+        raise StopPropagation
+
+# User-facing navigation. Every screen offers Back (-> home) and/or Close; all callbacks are answered.
 
 @Client.on_callback_query(filters.regex('^(home|start)$'))
 async def home(client: Client, query: CallbackQuery):
-    if getattr(client, 'bot_type', 'bot1') in ('bot1', 'rin') and query.from_user.id in client.admins:
-        buttons = [
-            [
-                {"text": "• ᴀʙᴏᴜᴛ", "callback_data": "about", "style": "primary"},
-                {"text": "• ᴄʜᴀɴɴᴇʟs", "callback_data": "channels", "style": "danger"}
-            ],
-            [
-                {"text": "⛩️ ꜱᴇᴛᴛɪɴɢꜱ ⛩️", "callback_data": "settings", "style": "success"},
-                {"text": "• Close •", "callback_data": "close", "style": "danger"}
-            ]
-        ]
-    else:
-        buttons = [
-            [
-                {"text": "• ᴀʙᴏᴜᴛ", "callback_data": "about", "style": "primary"},
-                {"text": "• ᴄʜᴀɴɴᴇʟs", "callback_data": "channels", "style": "danger"}
-            ],
-            [
-                {"text": "• Close •", "callback_data": "close", "style": "danger"}
-            ]
-        ]
-    text = client.messages.get('START', START_MSG).format(
-        first=query.from_user.first_name,
-        last=query.from_user.last_name or "",
-        username=None if not query.from_user.username else '@' + query.from_user.username,
-        mention=query.from_user.mention,
-        id=query.from_user.id
-    )
-    await _edit_msg(client, query, text, buttons)
+    await query.answer()
+    await ui.show_screen(client, query, await ui.home_screen(client, query.from_user))
+
+@Client.on_callback_query(filters.regex('^help$'))
+async def help_cb(client: Client, query: CallbackQuery):
+    await query.answer()
+    await ui.show_screen(client, query, ui.help_screen(client, query.from_user))
+
+@Client.on_callback_query(filters.regex('^premium$'))
+async def premium_cb(client: Client, query: CallbackQuery):
+    await query.answer()
+    await ui.show_screen(client, query, await ui.premium_screen(client, query.from_user))
 
 #==========================================================================#        
 
 @Client.on_callback_query(filters.regex('^about$'))
 async def about(client: Client, query: CallbackQuery):
-    buttons = [
-        [
-            {"text": "• ʙᴀᴄᴋ", "callback_data": "start", "style": "primary"},
-            {"text": "ᴄʟᴏsᴇ •", "callback_data": "close", "style": "danger"}
-        ]
-    ]
-    about_text = client.messages.get('ABOUT', ABOUT_TXT)
-    try:
-        about_text = about_text.format(
-            owner_id=client.owner,
-            bot_username=getattr(client, 'username', '') or getattr(client, 'name', ''),
-            first=query.from_user.first_name,
-            last=query.from_user.last_name or "",
-            username=None if not query.from_user.username else '@' + query.from_user.username,
-            mention=query.from_user.mention,
-            id=query.from_user.id
-        )
-    except Exception:
-        pass
-    await _edit_msg(client, query, about_text, buttons)
+    await query.answer()
+    await ui.show_screen(client, query, ui.about_screen(client, query.from_user))
 
 #==========================================================================#        
 
 @Client.on_callback_query(filters.regex('^channels$'))
 async def channels_cb(client: Client, query: CallbackQuery):
-    buttons = [
-        [
-            {"text": "• ʙᴀᴄᴋ", "callback_data": "start", "style": "primary"},
-            {"text": "home•", "callback_data": "start", "style": "success"}
-        ]
-    ]
-    channels_text = client.messages.get('CHANNELS', CHANNELS_TXT)
-    try:
-        channels_text = channels_text.format(
-            owner_id=client.owner,
-            bot_username=getattr(client, 'username', '') or getattr(client, 'name', ''),
-            first=query.from_user.first_name,
-            last=query.from_user.last_name or "",
-            username=None if not query.from_user.username else '@' + query.from_user.username,
-            mention=query.from_user.mention,
-            id=query.from_user.id
-        )
-    except Exception:
-        pass
-    await _edit_msg(client, query, channels_text, buttons)
+    await query.answer()
+    await ui.show_screen(client, query, ui.channels_screen(client, query.from_user))
 
 #==========================================================================#        
 
 @Client.on_callback_query(filters.regex('^close$'))
 async def close(client: Client, query: CallbackQuery):
+    await query.answer()
     await query.message.delete()
     try:
         await query.message.reply_to_message.delete()

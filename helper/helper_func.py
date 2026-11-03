@@ -2,11 +2,13 @@ import base64
 import re
 import asyncio
 from pyrogram import filters, Client
-from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, LinkPreviewOptions
 from pyrogram.enums import ChatMemberStatus
 from pyrogram.errors import UserNotParticipant, Forbidden, PeerIdInvalid, ChatAdminRequired, FloodWait
 from datetime import datetime, timedelta
 from pyrogram import errors
+
+NO_PREVIEW = LinkPreviewOptions(is_disabled=True)
 
 #===============================================================#
 
@@ -36,7 +38,7 @@ async def get_messages(client, message_ids):
             # Use new multi-DB channel function
             msgs = await get_messages_from_db_channels(client, temb_ids)
         except FloodWait as e:
-            await asyncio.sleep(e.x)
+            await asyncio.sleep(e.value)
             msgs = await get_messages_from_db_channels(client, temb_ids)
         except:
             pass
@@ -48,17 +50,20 @@ async def get_messages(client, message_ids):
 
 async def get_message_id(client, message):
     """Get message ID and source channel ID from forwarded message or link"""
-    if message.forward_from_chat:
+    origin = getattr(message, "forward_origin", None)
+    forward_chat = getattr(origin, "chat", None) or getattr(origin, "sender_chat", None)
+    if forward_chat:
+        forward_msg_id = getattr(origin, "message_id", None) or 0
         # Check if forwarded from primary DB channel
-        if message.forward_from_chat.id == client.db:
-            return message.forward_from_message_id, client.db
+        if forward_chat.id == client.db:
+            return forward_msg_id, client.db
         # Check against multiple DB channels
         db_channels = getattr(client, 'db_channels', {})
         for channel_id_str in db_channels.keys():
-            if message.forward_from_chat.id == int(channel_id_str):
-                return message.forward_from_message_id, int(channel_id_str)
+            if forward_chat.id == int(channel_id_str):
+                return forward_msg_id, int(channel_id_str)
         return 0, 0
-    elif message.forward_sender_name:
+    elif getattr(origin, "sender_user_name", None):
         return 0, 0
     elif message.text:
         pattern = r"https://t.me/(?:c/)?(.*)/(\d+)"
@@ -154,7 +159,7 @@ async def get_messages_from_db_channels(client, temb_ids):
                 continue
         
     except FloodWait as e:
-        await asyncio.sleep(e.x)
+        await asyncio.sleep(e.value)
         # Retry with the same function
         return await get_messages_from_db_channels(client, temb_ids)
     except Exception as e:
@@ -323,7 +328,8 @@ def force_sub(func):
 
         # User is not subscribed to all channels
         buttons = []
-        channels_message = f"{client.messages.get('FSUB', '')}\n\n"
+        from helper import ui as _ui
+        channels_message = f"{_ui.fill(client.messages.get('FSUB', ''), client, message.from_user)}\n\n"
 
         for channel_id, (channel_name, channel_link, request, timer) in client.fsub_dict.items():
             status = statuses.get(channel_id, None)
@@ -429,7 +435,7 @@ DEL_MSG = """<b>This File is deleting automatically in <a href="https://t.me/{us
 
 #Function for provide auto delete notification message
 async def auto_del_notification(bot_username, msg, delay_time, transfer): 
-    temp = await msg.reply_text(DEL_MSG.format(username=bot_username, time=convert_time(delay_time)), disable_web_page_preview = True) 
+    temp = await msg.reply_text(DEL_MSG.format(username=bot_username, time=convert_time(delay_time)), link_preview_options=NO_PREVIEW) 
 
     await asyncio.sleep(delay_time)
     try:
@@ -439,7 +445,7 @@ async def auto_del_notification(bot_username, msg, delay_time, transfer):
                 link = f"https://t.me/{bot_username}?start={transfer}"
                 button = [[InlineKeyboardButton(text=name, url=link), InlineKeyboardButton(text="ᴄʟᴏsᴇ •", callback_data = "close")]]
 
-                await temp.edit_text(text=f"<b>›› Pʀᴇᴠɪᴏᴜs Mᴇssᴀɢᴇ ᴡᴀs Dᴇʟᴇᴛᴇᴅ\n\nIғ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ɢᴇᴛ ᴛʜᴇ ғɪʟᴇs ᴀɢᴀɪɴ, ᴛʜᴇɴ ᴄʟɪᴄᴋ: <a href={link}>{name}</a> ʙᴜᴛᴛᴏɴ ʙᴇʟᴏᴡ ᴇʟsᴇ ᴄʟᴏsᴇ ᴛʜɪs ᴍᴇssᴀɢᴇ.</b>", reply_markup=InlineKeyboardMarkup(button), disable_web_page_preview = True)
+                await temp.edit_text(text=f"<b>›› Pʀᴇᴠɪᴏᴜs Mᴇssᴀɢᴇ ᴡᴀs Dᴇʟᴇᴛᴇᴅ\n\nIғ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ɢᴇᴛ ᴛʜᴇ ғɪʟᴇs ᴀɢᴀɪɴ, ᴛʜᴇɴ ᴄʟɪᴄᴋ: <a href={link}>{name}</a> ʙᴜᴛᴛᴏɴ ʙᴇʟᴏᴡ ᴇʟsᴇ ᴄʟᴏsᴇ ᴛʜɪs ᴍᴇssᴀɢᴇ.</b>", reply_markup=InlineKeyboardMarkup(button), link_preview_options=NO_PREVIEW)
 
             except Exception as e:
                 await temp.edit_text(f"<b>›› Pʀᴇᴠɪᴏᴜs Mᴇssᴀɢᴇ ᴡᴀs Dᴇʟᴇᴛᴇᴅ </b>")
@@ -473,7 +479,7 @@ async def batch_auto_del_notification(bot_username, messages, delay_time, transf
     notification_msg = await client.send_message(
         chat_id=chat_id,
         text=DEL_MSG.format(username=bot_username, time=convert_time(delay_time)),
-        disable_web_page_preview=True
+        link_preview_options=NO_PREVIEW,
     )
     
     await asyncio.sleep(delay_time)
@@ -496,7 +502,7 @@ async def batch_auto_del_notification(bot_username, messages, delay_time, transf
                 await notification_msg.edit_text(
                     text=f"<b>›› Pʀᴇᴠɪᴏᴜs Mᴇssᴀɢᴇ ᴡᴀs Dᴇʟᴇᴛᴇᴅ\n\nIғ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ɢᴇᴛ ᴛʜᴇ ғɪʟᴇs ᴀɢᴀɪɴ, ᴛʜᴇɴ ᴄʟɪᴄᴋ: <a href={link}>{name}</a> ʙᴜᴛᴛᴏɴ ʙᴇʟᴏᴡ ᴇʟsᴇ ᴄʟᴏsᴇ ᴛʜɪs ᴍᴇssᴀɢᴇ.</b>",
                     reply_markup=InlineKeyboardMarkup(button),
-                    disable_web_page_preview=True
+                    link_preview_options=NO_PREVIEW
                 )
             except Exception as e:
                 await notification_msg.edit_text(f"<b>›› Pʀᴇᴠɪᴏᴜs Mᴇssᴀɢᴇ ᴡᴀs Dᴇʟᴇᴛᴇᴅ</b>")

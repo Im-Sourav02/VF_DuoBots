@@ -2,7 +2,7 @@ import asyncio
 from pyrogram import filters, Client, ContinuePropagation
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.errors import FloodWait
-from helper.helper_func import encode
+from helper.helper_func import encode, NO_PREVIEW
 import re
 
 #===============================================================#
@@ -31,11 +31,11 @@ async def channel_post(client: Client, message: Message):
     if message.from_user.id not in client.admins:
         return await message.reply(client.reply_text)
 
-    reply_text = await message.reply_text("Please Wait...!", quote=True)
+    reply_text = await message.reply_text("Please Wait...!")
     try:
         post_message = await message.copy(chat_id=client.db, disable_notification=True)
     except FloodWait as e:
-        await asyncio.sleep(e.x)
+        await asyncio.sleep(e.value)
         post_message = await message.copy(chat_id=client.db, disable_notification=True)
     except Exception as e:
         print(e)
@@ -58,7 +58,7 @@ async def channel_post(client: Client, message: Message):
         await reply_text.edit(
             reply_text_str,
             reply_markup=reply_markup,
-            disable_web_page_preview=True
+            link_preview_options=NO_PREVIEW
         )
     else:
         reply_markup = InlineKeyboardMarkup([
@@ -67,7 +67,7 @@ async def channel_post(client: Client, message: Message):
         await reply_text.edit(
             f"<b>Here is your link</b>\n\n{link}",
             reply_markup=reply_markup,
-            disable_web_page_preview=True
+            link_preview_options=NO_PREVIEW
         )
 
     if not client.disable_btn:

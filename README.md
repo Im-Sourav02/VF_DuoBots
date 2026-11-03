@@ -1,203 +1,107 @@
-━━━━━━━━━━━━━━━━━━━━
+# VF Duo — two-bot Telegram file store
 
-<h2 align="center">
-    ──「 ғɪʟᴇ sᴛᴏʀᴇ ᴘʀᴏ - ʙʏ ʏᴀᴛᴏ 」──
-</h2>
+One process runs two Kurigram clients that share this codebase and the `plugins/` load path:
 
-<p align="center">
-  <img src="https://camo.githubusercontent.com/6cfe41b279bbe53061fc4591d115038dc36acc593bb6062d0692b8a0810d1bde/68747470733a2f2f74652e6c656772612e70682f66696c652f3066373538333231613932613934323861366334382e6a7067">
-</p>
+| Setting prefix | Display name | Username (default) | Role |
+| --- | --- | --- | --- |
+| `BOT1_*` | Sadie Sink | `@VeloraFileShareRoBot` | Filestore, shortener, **credits** |
+| `BOT2_*` | Wanda | `@VFFileBot` | Link protector, **no credits** |
 
-<p align="center">
-<a href="https://github.com/codeflix-bots/filestore/stargazers"><img src="https://img.shields.io/github/stars/codeflix-bots/filestore?color=black&logo=github&logoColor=black&style=for-the-badge" alt="Stars" /></a>
-<a href="https://github.com/codeflix-bots/filestore/network/members"> <img src="https://img.shields.io/github/forks/codeflix-bots/filestore?color=black&logo=github&logoColor=black&style=for-the-badge" /></a>
-<a href="https://github.com/codeflix-bots/filestore/blob/yato/LICENSE"> <img src="https://img.shields.io/badge/License-MIT-blueviolet?style=for-the-badge" alt="License" /> </a>
-<a href="https://www.python.org/"> <img src="https://img.shields.io/badge/Written%20in-Python-orange?style=for-the-badge&logo=python" alt="Python" /> </a>
-<a href="https://github.com/codeflix-bots/filestore/commits/Noob-Mukesh"> <img src="https://img.shields.io/github/last-commit/codeflix-bots/filestore?color=blue&logo=github&logoColor=green&style=for-the-badge" /></a>
-</p>
+Both clients use Kurigram. Kurigram keeps the `pyrogram` import namespace, so plugin imports stay `from pyrogram import …`. Do not install `pyrofork` or upstream `pyrogram` alongside it (`start.sh` uninstalls them first).
 
-<p align="center">
-<b>𝗗𝗘𝗣𝗟𝗢𝗬𝗠𝗘𝗡𝗧 𝗠𝗘𝗧𝗛𝗢𝗗𝗦</b>
-</p>
+## Bot mapping
 
-<h3 align="center">
-    ─「 ᴅᴇᴩʟᴏʏ ᴏɴ ʜᴇʀᴏᴋᴜ 」─
-</h3>
+Prompt numbering called Sadie Sink “Bot 2” and Wanda “Bot 1”. Deployed wiring is the other way around:
 
-<p align="center"><a href="https://dashboard.heroku.com/new?template=https://github.com/codeflix-bots/Filestore"> <img src="https://img.shields.io/badge/Deploy%20On%20Heroku-black?style=for-the-badge&logo=heroku" width="220" height="38.45"/></a></p>
+- `.env` labels `BOT1_*` as the filestore (Sadie Sink) and `BOT2_*` as the link protector (Wanda / Scarlet Witch).
+- `BOT1_BOT_USERNAME` is the file-delivery bot; `BOT2_BOT_USERNAME` is the deep-link wrapper.
+- Runtime: Bot 1 stores files, runs the shortener, and auto-chains a Bot 2 link. Bot 2 only returns that stored Bot 1 URL.
+- Credits belong on the filestore/shortener client (`credits_enabled=True` on Bot 1 only). Wanda never awards, spends, or displays a credit balance.
 
+Display names can be overridden with `BOT1_DISPLAY_NAME` / `BOT2_DISPLAY_NAME` without changing routing.
 
-<h3 align="center">
-    ─「 ᴅᴇᴩʟᴏʏ ᴏɴ ᴠᴘs/ʟᴏᴄᴀʟ 」─
-</h3>
+## Credits (Sadie Sink only)
 
-<details><summary><b> - ғᴇᴀᴛᴜʀᴇs ᴀɴᴅ ᴅᴇᴄʀɪᴘᴛɪᴏɴ:</b></summary>
-  
-## ғᴇᴀᴛᴜʀᴇs
-### ›› ʀᴇǫᴜᴇsᴛ ғᴏʀᴄᴇ sᴜʙ: 
-<i>The most demanding aspect is the Request Force-Sub feature. By enabling Request Force-Sub mode, users are provided with a private channel link along with a join request. This feature adds versatility, allowing for greater flexibility in managing Force-Sub channels based on individual preferences. Additionally, the Request Force-Sub settings offer interactive features that enable more advanced and reliable operations.</i>
+Non-premium users on Bot 1:
 
-### ›› ᴄᴜsᴛᴏᴍ ғᴏʀᴄᴇ sᴜʙ: 
-<i>You can add one or multiple force-sub channels—there's no limit to the number you can add. You can also empty the list by deleting all force-sub channels. This feature provides versatility, allowing you to create a custom number of force-sub channels according to your preference.</i>
+1. Open a file/batch deep link (`/start <base64>`).
+2. If the shortener is on and they are not premium/owner, Bot 1 tries to **atomically spend 1 credit**.
+3. Insufficient balance (or no balance row) → shortener verification screen (`Open Link`, `Tutorial`, `Skip Ads`).
+4. A one-time random token is stored in MongoDB, bound to that user and that file payload, with a TTL. The shortened URL is the only copy of `t.me/<bot>?start=v_<token>`. Crafted `v_` parameters and the old `yu3elk…7` marker are not treated as a completed bypass.
+5. After the shortener, Bot 1 claims the token (`issued` → `claimed`) for that user, awards **2 credits once** (unique `credit_rewards` ledger), then shows `Click Here` back to the same file link.
+6. The file link spend in step 2 then deducts **1 credit** and delivers. Failed delivery refunds the spend. Database errors refuse delivery instead of giving files away.
 
-### ›› ᴀᴅᴅ ᴍᴜʟᴛɪ ᴀᴅᴍɪɴs: 
-<i>You can add one or multiple admins by providing their user IDs, and you can also remove all admins if needed. Admins have access to some useful bot commands but do not have access to all commands.</i>
+Premium users and the owner skip ads and neither earn nor spend credits. Wanda (`BOT2_*`) has no credit collections written and no verification tokens.
 
-### ›› ʙᴀɴ-ᴜɴʙᴀɴ: 
-<i>You can add user IDs to a banned list, preventing those who annoy you or spam the bot from using it. They will be unable to access the bot until you remove them from the banned list.</i>
+Replaying a rewarded token does not add credits again. Replaying a token that was claimed but not yet marked rewarded also does not double-award; the verified screen is shown so the user can still open the file.
 
-### ›› ᴀᴜᴛᴏ ᴅᴇʟᴇᴛᴇ: 
-<i>This feature is crucial for protecting the bot from copyright strikes and reducing the risk of being banned from Telegram. It includes two options: first, you can enable or disable the auto-delete mode; second, you can set a timer, so files will be automatically deleted after a specified period. After that it also send a message that shows the "previous message was deleted" and provide the link to retrieve again the same files.</i>
+## UI
 
-### ›› ᴄᴏɴᴛᴇɴᴛ ʙᴜᴛᴛᴏɴ: 
-<i>This feature allows you to add customizable buttons to files shared by the bot. Every file shared by the bot will have a button, which you can tailor to meet your specific needs.</i>
+Both bots share `helper/ui.py`: photo on top, uppercase section headings, quote/blockquote panels, colored action buttons (Bot API `style` with Kurigram markup fallback). Screens:
 
-### ›› sᴇᴛ ʙᴜᴛᴛᴏɴ: 
-<i>This feature allows you to customize the content buttons on files shared by the bot. For example, you can set the button name and link. You could create a button labeled "Join Channel," which will appear on the files and contain a specific link provided by you.</i>
+- Home — How to Use, Channels, Premium Plans, Close (Settings for admins)
+- How to Use — Premium, Owner, Support, Back, Close
+- Official network — Back, Close
+- Premium — Buy Premium, Back, Close
+- Shortener verification (Sadie Sink) — Open Link, Tutorial, Skip Ads, Close
+- Verification success (Sadie Sink) — Click Here, Skip Ads, Close
 
-### ›› ʜɪᴅᴇ ᴄᴀᴘᴛɪᴏɴ ᴀɴᴅ ᴘʀᴏᴛᴇᴄᴛ ᴄᴀᴘᴛɪᴏɴ:
-<i>The "Hide Caption" feature allows you to remove the caption from shared files, while the "Protect Content" feature secures the files. If you enable "Protect Content," the files cannot be forwarded by users.</i>
+Button destinations (`PREMIUM_LINK`, `OWNER_LINK`, `SUPPORT_LINK`, tutorial URL from shortener settings) are omitted when unset. Per-screen photos are env-overridable (`BOT1_HELP_PHOTO`, `BOT2_START_PHOTO`, …) and fall back to that bot’s start photo.
 
-### ›› sᴛᴀʀᴛ & ғsᴜʙ ᴍᴇᴅɪᴀ:
-<i>ᴘʀᴏᴠɪᴅᴇ ɪᴍᴀɢᴇ ᴜʀʟs ᴏʀ ᴅɪʀᴇᴄᴛʟʏ sᴇɴᴅ ᴘʜᴏᴛᴏs ᴛᴏ ᴄᴜsᴛᴏᴍɪᴢᴇ ᴛʜᴇ sᴛᴀʀᴛ ᴀɴᴅ ꜰᴏʀᴄᴇ sᴜʙsᴄʀɪʙᴇ ᴍᴇssᴀɢᴇs.</i>
+## Setup
 
-### ›› ꜰᴜʟʟʏ ᴇᴅɪᴛᴀʙʟᴇ ᴍᴇssᴀɢᴇs:
-<i>ᴄᴜsᴛᴏᴍɪᴢᴇ sᴛᴀʀᴛ, ᴀʙᴏᴜᴛ, ʀᴇᴘʟʏ, ᴀɴᴅ ғsᴜʙ ᴍᴇssᴀɢᴇs ᴡɪᴛʜ ꜰᴏʀᴍᴀᴛᴛɪɴɢ ᴀɴᴅ ᴘʟᴀᴄᴇʜᴏʟᴅᴇʀs (sᴇᴇ ʙᴇʟᴏᴡ)..</i>
+Python 3.10+ (Kurigram requirement). `runtime.txt` is 3.11.9.
 
-### ›› ᴄᴜsᴛᴏᴍ ᴜʀʟ sʜᴏʀᴛᴇɴᴇʀ:
-<i>ᴀᴅᴅ ʏᴏᴜʀ ꜱʜᴏʀᴛᴇɴᴇʀ ᴜʀʟ, ᴀᴘɪ ᴋᴇʏꜱ, ᴀɴᴅ ᴅɪʀᴇᴄᴛ ᴛᴇʟᴇɢʀᴀᴍ ᴛᴜᴛᴏʀɪᴀʟ ʟɪɴᴋꜱ ꜰᴏʀ ᴇᴀꜱʏ ᴄᴏɴꜰɪɢᴜʀᴀᴛɪᴏɴ...</i>
-
-### <i>›› In addition to the above, more user-friendly and advanced interaction features have been added.</i>
-</details>
-
-<details><summary><b> - ᴀᴅᴍɪɴ ᴀɴᴅ ᴜsᴇʀs ᴄᴏᴍᴍᴀɴᴅs :</b></summary>
-  
-## ᴀᴅᴍɪɴ ᴀɴᴅ ᴜsᴇʀs ᴄᴏᴍᴍᴀɴᴅs
-- **start** - sᴛᴀʀᴛ ᴛʜᴇ ʙᴏᴛ
-- **shortner** - sʜᴏʀᴛɴᴇʀ sᴇᴛᴛɪɴɢs
-- **users** - ᴠɪᴇᴡ ᴛʜᴇ ᴜsᴇʀs ʟɪsᴛ
-- **broadcast** - sᴇɴᴅ ᴀ ᴍᴇssᴀɢᴇ ᴛᴏ ᴀʟʟ ᴜsᴇʀs
-- **batch** - sᴇɴᴅ ᴍᴇssᴀɢᴇs ɪɴ ʙᴀᴛᴄʜᴇs
-- **genlink** - ɢᴇɴᴇʀᴀᴛᴇ ᴀ ʟɪɴᴋ
-- **usage** - ᴄʜᴇᴄᴋ ʟɪɴᴋ ᴜsᴀɢᴇ
-- **pbroadcast** - sᴇɴᴅ ᴘʀᴇᴍɪᴜᴍ ᴍᴇssᴀɢᴇ ᴛᴏ ᴜsᴇʀs
-- **ban** - ʙᴀɴ ᴀ ᴜsᴇʀ
-- **unban** - ᴜɴʙᴀɴ ᴀ ᴜsᴇʀ
-- **addpremium** - ᴀᴅᴅ ᴘʀᴇᴍɪᴜᴍ ᴜsᴇʀ
-- **delpremium** - ʀᴇᴍᴏᴠᴇ ᴘʀᴇᴍɪᴜᴍ ᴜsᴇʀ
-- **premiumusers** - ᴠɪᴇᴡ ᴀʟʟ ᴘʀᴇᴍɪᴜᴍ ᴜsᴇʀs
-- **request** - sᴇɴᴅ ᴀ ʀᴇǫᴜᴇsᴛ
-- **profile** - ᴠɪᴇᴡ ᴜsᴇʀ ᴘʀᴏғɪʟᴇ
-
-- **db** - db channel configs
-- **adddb** - add primary & secondary db channel
-- **removedb** - to remove db channel.
-</details>
-
-<details><summary><b> - ᴠᴀʀɪᴀʙʟᴇs :</b></summary>
-  
-## ᴠᴀʀɪᴀʙʟᴇs
-
-```python
-# Bot Instance Configuration
-SESSION = "your_session_name"
-TOKEN = "your_bot_token"
-API_ID = your_api_id
-API_HASH = "your_api_hash"
-WORKERS = 5
-
-# Database Configuration
-DB_URI = "your_mongodb_uri"
-DB_NAME = "your_database_name"
-
-# Force Subscription Channels [channel_id, request_enabled, timer_in_minutes]
-FSUBS = [[-1001234567890, True, 10]]
-
-# Database Channel
-DB_CHANNEL = -1001234567890
-
-# Auto Delete Timer (seconds)
-AUTO_DEL = 300
-
-# Admin IDs
-ADMINS = [123456789, 987654321]
-
-# Bot Settings
-DISABLE_BTN = True
-PROTECT = True
-
-# Messages Configuration
-MESSAGES = {
-    "START": "Your start message here with {first} placeholder",
-    "FSUB": "Your force subscription message",
-    "ABOUT": "About message",
-    # ... other messages
-}
+```bash
+python -m venv .venv
+.venv\Scripts\activate          # Windows
+pip install -U pip
+pip install -r requirements.txt
+cp .env.example .env            # then fill in secrets
+python main.py
 ```
-</details>
 
-<details>
-<summary><h3>
-- <b> ᴠᴘs/ʟᴏᴄᴀʟ ᴅᴇᴘʟᴏʏᴍᴇɴᴛ ᴍᴇᴛʜᴏᴅ </b>
-</h3></summary>
+Official Kurigram install is `pip install kurigram` ([PyPI](https://pypi.org/project/Kurigram/), [site](https://kurigram.icu)). This repo pins `kurigram==2.2.26`.
 
-- Get your [Necessary Variables](https://github.com/Codeflix-Bots/filestore/blob/yato/config.py)
-- git clone https://github.com/Codeflix-Bots/filestore
-- # Install Packages
-- pip3 install -U -r requirements.txt
-- Edit config.py with variables as given below then run bot
-- python3 main.py
+Docker / Heroku use `Dockerfile` + `start.sh`, which force-removes `pyrofork`/`pyrogram` before installing requirements.
 
-<p align="center">
-  <img src="https://graph.org/file/c7727a6d27332ffcd8f03.jpg">
-</p>
+### Required environment
 
+| Variable | Purpose |
+| --- | --- |
+| `API_ID`, `API_HASH` | Telegram API credentials |
+| `OWNER_ID` | Owner Telegram user ID |
+| `BOT1_TOKEN` | Sadie Sink bot token |
+| `BOT1_DB_URI` | MongoDB URI for Bot 1 |
+| `BOT1_DB_CHANNEL` | Private channel where Bot 1 stores files (bot must be admin) |
 
-</details>
-━━━━━━━━━━━━━━━━━━━━
+### Strongly recommended
 
-<h3 align="center">
-    ─「 sᴜᴩᴩᴏʀᴛ 」─
-</h3>
+| Variable | Purpose |
+| --- | --- |
+| `BOT1_BOT_USERNAME` | Used when chaining Bot 2 links from Bot 1 |
+| `BOT2_TOKEN`, `BOT2_DB_CHANNEL`, `BOT2_BOT_USERNAME` | Enable Wanda; skip all three to run Bot 1 alone |
+| `BOT2_DB_URI`, `BOT2_DB_NAME` | Must be a **different database name** than Bot 1 |
+| `SHORT_URL`, `SHORT_API`, `SHORT_TUT` | Shortener used by Sadie Sink (also editable in `/shortner`) |
+| `PREMIUM_LINK`, `OWNER_LINK`, `SUPPORT_LINK`, `PREMIUM_PRICE_TEXT` | UI buttons |
 
-<p align="center">
-<a href="https://telegram.me/codeflixsupport"><img src="https://img.shields.io/badge/-Support%20Group-blue.svg?style=for-the-badge&logo=Telegram"></a>
-</p>
-<p align="center">
-<a href="https://telegram.me/codeflix_bots"><img src="https://img.shields.io/badge/-Support%20Channel-blue.svg?style=for-the-badge&logo=Telegram"></a>
-</p>
+See `.env.example` for photo keys and credit TTL knobs. Tokens, MongoDB URIs, and API keys have **no source defaults**.
 
-━━━━━━━━━━━━━━━━━━━━
+## Commands (unchanged)
 
-<h3 align="center">
-    ─「 ᴄʀᴇᴅɪᴛs 」─
-</h3>
+Users: `/start`, `/profile`, `/request` (premium, Sadie Sink).  
+Admins: `/batch`, `/genlink`, `/nbatch`, `/shortner` (Sadie Sink), `/broadcast`, `/ban`, `/addpremium`, `/db`, …
 
-- <b>[ʏᴀᴛᴏ](https://github.com/Codeflix-Bots)  ➻  [sᴏᴍᴇᴛʜɪɴɢ](https://github.com/proyato) </b>
-- <b>[ᴠᴏᴀᴛ](https://github.com/Codeflix-Bots)  ➻  [ʙᴀsᴇ ʀᴇᴘᴏ](https://github.com/ArihantSharma/FileStoreBot) </b>
+Force-sub, auto-delete, custom caption, broadcast, and Bot 1 → Bot 2 link chaining are unchanged. Channel posts on Bot 1 still generate a Bot 1 file link and store it in Bot 2’s DB channel.
 
-<h3 align="center">
-<b>🤝 ᴄᴏɴᴛʀɪʙᴜᴛɪɴɢ
-ᴄᴏɴᴛʀɪʙᴜᴛɪᴏɴs ᴀʀᴇ ᴀʟᴡᴀʏs ᴡᴇʟᴄᴏᴍᴇ! ꜰᴇᴇʟ ꜰʀᴇᴇ ᴛᴏ ᴏᴘᴇɴ ᴘᴜʟʟ ʀᴇǫᴜᴇsᴛs ᴛᴏ ɪᴍᴘʀᴏᴠᴇ ᴛʜɪs ʀᴇᴘᴏ 🖤 </b>
-</h3>
+## Remaining configuration
 
-# 📝 ʟɪᴄᴇɴsᴇ
-›› ʏᴏᴜ ᴄᴀɴ ꜰʀᴇᴇʟʏ ʜᴏsᴛ ᴛʜɪs ʀᴇᴘᴏ ʏᴏᴜʀsᴇʟꜰ. ᴀʟʟ ᴡᴇ ᴀsᴋ ɪs ᴛʜᴀᴛ ʏᴏᴜ ᴘʀᴏᴠɪᴅᴇ ᴘʀᴏᴘᴇʀ ᴄʀᴇᴅɪᴛs ʙʏ ʟɪɴᴋɪɴɢ ᴛᴏ ᴛʜɪs ʀᴇᴘᴏsɪᴛᴏʀʏ.
+1. Fill `.env` from `.env.example`. Older git history still contains credential defaults — **rotate bot tokens, MongoDB passwords, shortener API keys, and Telegram API credentials** if this repo was ever pushed or shared.
+2. Confirm Bot 1 is admin in `BOT1_DB_CHANNEL` and Bot 2 is admin in `BOT2_DB_CHANNEL`.
+3. Keep `BOT1_DB_NAME` and `BOT2_DB_NAME` distinct.
+4. Set screen photos (`BOT1_HELP_PHOTO`, `BOT2_PREMIUM_PHOTO`, …) if you do not want every screen to reuse the start image.
+5. Configure the shortener from `/shortner` on Sadie Sink after first boot if MongoDB should override env fallbacks.
 
-›› ᴛʜɪs ᴘʀᴏᴊᴇᴄᴛ ɪs ʟɪᴄᴇɴsᴇᴅ ᴜɴᴅᴇʀ ᴛʜᴇ ɢɴᴜ ɢᴇɴᴇʀᴀʟ ᴘᴜʙʟɪᴄ ʟɪᴄᴇɴsᴇ ᴠ3.0 (ɢᴘʟᴠ3).
-ʏᴏᴜ ᴀʀᴇ ꜰʀᴇᴇ ᴛᴏ ᴜsᴇ, ᴍᴏᴅɪꜰʏ, ᴀɴᴅ sʜᴀʀᴇ ɪᴛ — ʙᴜᴛ ʏᴏᴜ ᴍᴜsᴛ ᴀʟsᴏ ɢɪᴠᴇ ᴄʀᴇᴅɪᴛ ᴀɴᴅ ᴋᴇᴇᴘ ɪᴛ ᴜɴᴅᴇʀ ᴛʜᴇ ɢᴘʟ ʟɪᴄᴇɴsᴇ.
+## License
 
-
-━━━━━━━━━━━━━━━━━━━━
-
-
-
-
-
-
-
-
-
-
-
-
+GPLv3. Originally derived from [Codeflix Filestore](https://github.com/codeflix-bots/filestore).

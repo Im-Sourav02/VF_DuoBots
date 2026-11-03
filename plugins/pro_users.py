@@ -6,6 +6,7 @@ from datetime import datetime
 from datetime import timedelta
 import re
 from config import OWNER_ID
+from helper.helper_func import NO_PREVIEW
 #--------------------------------
 
 def parse_duration(duration_str: str) -> timedelta:
@@ -152,7 +153,7 @@ async def admin_list_command(client: Client, message: Message):
     if formatted_admins:
         await message.reply_text(
             "<b>📊 Premium Users List:</b>\n\n" + "\n".join(formatted_admins),
-            disable_web_page_preview=True
+            link_preview_options=NO_PREVIEW
         )
     else:
         await message.reply_text("<b>No premium users found.</b>")

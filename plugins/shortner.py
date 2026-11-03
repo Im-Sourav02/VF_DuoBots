@@ -1,11 +1,12 @@
+import asyncio
 import requests
 import random
 import string
 import base64
-from config import SHORT_URL, SHORT_API, MESSAGES
+from config import SHORT_URL, SHORT_API, MESSAGES, REDIRECTOR_DOMAIN
 from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputMediaPhoto
-from pyrogram.errors.pyromod import ListenerTimeout
+from helper.conversation import ListenerTimeout
 from helper.helper_func import force_sub
 
 # ✅ In-memory cache
@@ -38,25 +39,50 @@ def get_short(url, client):
         rjson = response.json()
 
         if rjson.get("status") == "success" and response.status_code == 200:
-            # Get the original shortener link (lksfy.com)
-            original_short_link = rjson.get("shortenedUrl", url)
-            
-            # --- CUSTOM DOMAIN REDIRECT LOGIC ---
-            # 1. Encode the short link to Base64
-            encoded_link = base64.b64encode(original_short_link.encode("utf-8")).decode("utf-8")
-            
-            # 2. Build the new sukuna.site link
-            secure_domain_link = f"https://sukuna.site/?to={encoded_link}"
-            
-            # 3. Save to cache and return the new custom domain link
-            shortened_urls_cache[cache_key] = secure_domain_link
-            return secure_domain_link
-            # ------------------------------------
+            short_link = _wrap_redirect(rjson.get("shortenedUrl", url))
+            shortened_urls_cache[cache_key] = short_link
+            return short_link
             
     except Exception as e:
-        print(f"[Shortener Error] {e}")
+        print(f"[Shortener Error] {type(e).__name__}")
 
     return url  # fallback
+
+
+def _wrap_redirect(short_link: str) -> str:
+    if not REDIRECTOR_DOMAIN:
+        return short_link
+    encoded_link = base64.b64encode(short_link.encode("utf-8")).decode("utf-8")
+    return f"https://{REDIRECTOR_DOMAIN}/?to={encoded_link}"
+
+
+def _request_short_link(url: str, short_url: str, short_api: str) -> str | None:
+    response = requests.get(
+        f"https://{short_url}/api",
+        params={"api": short_api, "url": url, "alias": generate_random_alphanumeric()},
+        timeout=15,
+    )
+    rjson = response.json()
+    short_link = rjson.get("shortenedUrl")
+    if response.status_code == 200 and rjson.get("status") == "success" and short_link and short_link != url:
+        return _wrap_redirect(short_link)
+    return None
+
+
+async def shorten_verification_link(url: str, client) -> str | None:
+    """
+    Shorten a one-time verification URL. Returns None on any failure and never the original URL:
+    the verification URL must only be reachable by passing through the shortener.
+    """
+    short_url = getattr(client, 'short_url', SHORT_URL)
+    short_api = getattr(client, 'short_api', SHORT_API)
+    if not short_url or not short_api:
+        return None
+    try:
+        return await asyncio.to_thread(_request_short_link, url, short_url, short_api)
+    except Exception as e:
+        print(f"[Shortener Error] {type(e).__name__}")
+        return None
 
 #===============================================================#
 
@@ -93,7 +119,7 @@ async def shortner_panel(client, query_or_message):
 **<u>ᴄᴜʀʀᴇɴᴛ ꜱᴇᴛᴛɪɴɢꜱ:</u>**
 <blockquote>›› **ꜱʜᴏʀᴛɴᴇʀ ꜱᴛᴀᴛᴜꜱ:** {enabled_text}
 ›› **ꜱʜᴏʀᴛɴᴇʀ ᴜʀʟ:** `{short_url}`
-›› **ꜱʜᴏʀᴛɴᴇʀ ᴀᴘɪ:** `{short_api}`</blockquote> 
+›› **ꜱʜᴏʀᴛɴᴇʀ ᴀᴘɪ:** `{(short_api[:6] + '…') if short_api else 'ɴᴏᴛ ꜱᴇᴛ'}`</blockquote> 
 <blockquote>›› **ᴛᴜᴛᴏʀɪᴀʟ ʟɪɴᴋ:** `{tutorial_link}`
 ›› **ᴀᴘɪ ꜱᴛᴀᴛᴜꜱ:** {status}</blockquote>
 
@@ -123,6 +149,8 @@ async def shortner_panel(client, query_or_message):
 async def shortner_callback(client, query):
     if not query.from_user.id in client.admins:
         return await query.answer('❌ ᴏɴʟʏ ᴀᴅᴍɪɴꜱ ᴄᴀɴ ᴜꜱᴇ ᴛʜɪꜱ!', show_alert=True)
+    if getattr(client, 'bot_type', 'bot1') not in ('bot1', 'rin'):
+        return await query.answer('Shortener settings belong to the file-share bot.', show_alert=True)
     await query.answer()
     await shortner_panel(client, query)
 
@@ -167,7 +195,7 @@ async def change_shortner(client: Client, query: CallbackQuery):
 __<blockquote>**≡ ꜱᴇɴᴅ ɴᴇᴡ ꜱʜᴏʀᴛɴᴇʀ ᴜʀʟ ᴀɴᴅ ᴀᴘɪ ɪɴ ᴛʜɪꜱ ꜰᴏʀᴍᴀᴛ ɪɴ ᴛʜᴇ ɴᴇxᴛ 60 ꜱᴇᴄᴏɴᴅꜱ!**</blockquote>__
 
 **ꜰᴏʀᴍᴀᴛ:** `ᴜʀʟ ᴀᴘɪ`
-**ᴇxᴀᴍᴘʟᴇ:** `shortxlinks.com 79d083375a3a6d9a1554ff6507494e72154bcb59`"""
+**ᴇxᴀᴍᴘʟᴇ:** `shortxlinks.com YOUR_SHORTENER_API_KEY`"""
     
     await query.message.edit_text(msg)
     try:
@@ -272,7 +300,8 @@ async def test_shortner(client: Client, query: CallbackQuery):
 **ꜱᴛᴀᴛᴜꜱ ᴄᴏᴅᴇ:** `{response.status_code}`"""
             
     except Exception as e:
-        msg = f"**❌ ꜱʜᴏʀᴛɴᴇʀ ᴛᴇꜱᴛ ꜰᴀɪʟᴇᴅ!**\n\n**ᴇʀʀᴏʀ:** `{str(e)}`"
+        error_text = str(e).replace(short_api, "<api-key>") if short_api else str(e)
+        msg = f"**❌ ꜱʜᴏʀᴛɴᴇʀ ᴛᴇꜱᴛ ꜰᴀɪʟᴇᴅ!**\n\n**ᴇʀʀᴏʀ:** `{error_text}`"
     
     await query.message.edit_text(msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('◂ ʙᴀᴄᴋ', 'shortner')]]))
 

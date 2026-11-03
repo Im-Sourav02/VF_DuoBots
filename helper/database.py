@@ -1,5 +1,14 @@
+import secrets
 import motor.motor_asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from pymongo import ReturnDocument
+from pymongo.errors import DuplicateKeyError
+
+
+def _utcnow() -> datetime:
+    # Naive UTC, matching what Motor returns for stored dates (needed for TTL + comparisons).
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
 
 class MongoDB:
     _instances = {}
@@ -15,6 +24,10 @@ class MongoDB:
             instance.fsub_status = instance.db['fsub_status']  # New collection for fsub status tracking
             instance.request_sub = instance.db['request_sub']  # New collection for join request tracking
             instance.admins_data = instance.db['admins']       # Dedicated collection for admins
+            # Credits (only written by the credits-enabled bot)
+            instance.credits = instance.db['credits']                # _id = Telegram user ID
+            instance.credit_rewards = instance.db['credit_rewards']  # _id = verify token; unique one-time ledger
+            instance.verify_tokens = instance.db['verify_tokens']    # one-time shortener verification tokens
             cls._instances[(uri, db_name)] = instance
         return cls._instances[(uri, db_name)]
 
@@ -838,3 +851,148 @@ class MongoDB:
                 "admins": [],
                 "shortner_settings": {}
             }
+
+    # ✅ CREDITS (credits-enabled bot only)
+    # These methods let database errors propagate: callers must refuse delivery when they raise.
+    #
+    # credits:         {_id: user_id, balance, earned, spent, updated_at}
+    # credit_rewards:  {_id: verify token, user_id, amount, created_at}  — unique, never sliced
+    # verify_tokens:   {_id: token, user_id, payload, status: issued|claimed|rewarded,
+    #                   short_link, created_at, expires_at (TTL), claimed_at}
+
+    async def ensure_credit_indexes(self):
+        await self.verify_tokens.create_index("expires_at", expireAfterSeconds=0)
+        await self.verify_tokens.create_index([("user_id", 1), ("payload", 1), ("status", 1)])
+        await self.credit_rewards.create_index("user_id")
+
+    async def get_credits(self, user_id: int) -> int:
+        doc = await self.credits.find_one({"_id": user_id}, {"balance": 1})
+        return int(doc.get("balance", 0)) if doc else 0
+
+    async def spend_credit(self, user_id: int, amount: int) -> int | None:
+        """Atomically deduct `amount`. Returns the new balance, or None if the balance is insufficient."""
+        doc = await self.credits.find_one_and_update(
+            {"_id": user_id, "balance": {"$gte": amount}},
+            {"$inc": {"balance": -amount, "spent": amount}, "$set": {"updated_at": _utcnow()}},
+            return_document=ReturnDocument.AFTER,
+        )
+        return None if doc is None else int(doc["balance"])
+
+    async def refund_credit(self, user_id: int, amount: int):
+        await self.credits.update_one(
+            {"_id": user_id},
+            {"$inc": {"balance": amount, "spent": -amount}, "$set": {"updated_at": _utcnow()}},
+        )
+
+    async def award_credits_once(self, user_id: int, reward_id: str, amount: int) -> bool:
+        """
+        Add `amount` credits for `reward_id` exactly once.
+
+        The unique `_id` on `credit_rewards` is the replay guard (it is never truncated).
+        Prefers a replica-set transaction so a crash cannot record the token without
+        incrementing the balance. If transactions are unavailable, falls back to
+        insert-then-increment with a compensating delete on increment failure.
+        """
+        now = _utcnow()
+        ledger = {
+            "_id": reward_id,
+            "user_id": user_id,
+            "amount": amount,
+            "created_at": now,
+        }
+        increment = {
+            "$inc": {"balance": amount, "earned": amount},
+            "$set": {"updated_at": now},
+            "$setOnInsert": {"spent": 0, "created_at": now},
+        }
+
+        async def _apply(session=None):
+            kwargs = {"session": session} if session is not None else {}
+            try:
+                await self.credit_rewards.insert_one(ledger, **kwargs)
+            except DuplicateKeyError:
+                return False
+            try:
+                await self.credits.update_one(
+                    {"_id": user_id}, increment, upsert=True, **kwargs
+                )
+            except Exception:
+                if session is None:
+                    await self.credit_rewards.delete_one({"_id": reward_id})
+                raise
+            return True
+
+        try:
+            async with await self.client.start_session() as session:
+                async with session.start_transaction():
+                    return await _apply(session)
+        except DuplicateKeyError:
+            return False
+        except Exception:
+            return await _apply()
+
+    async def create_verify_token(self, user_id: int, payload: str, ttl_seconds: int) -> dict:
+        now = _utcnow()
+        doc = {
+            "_id": secrets.token_urlsafe(16),
+            "user_id": user_id,
+            "payload": payload,
+            "status": "issued",
+            "short_link": None,
+            "created_at": now,
+            "expires_at": now + timedelta(seconds=ttl_seconds),
+        }
+        await self.verify_tokens.insert_one(doc)
+        return doc
+
+    async def find_open_verify_token(self, user_id: int, payload: str, min_remaining_seconds: int) -> dict | None:
+        """An unredeemed token for the same user + link that is still valid long enough to reuse."""
+        return await self.verify_tokens.find_one({
+            "user_id": user_id,
+            "payload": payload,
+            "status": "issued",
+            "short_link": {"$ne": None},
+            "expires_at": {"$gt": _utcnow() + timedelta(seconds=min_remaining_seconds)},
+        })
+
+    async def set_verify_short_link(self, token: str, short_link: str):
+        await self.verify_tokens.update_one({"_id": token, "status": "issued"}, {"$set": {"short_link": short_link}})
+
+    async def discard_verify_token(self, token: str):
+        await self.verify_tokens.delete_one({"_id": token, "status": "issued"})
+
+    async def claim_verify_token(self, token: str, user_id: int, min_age_seconds: int) -> tuple[str, dict | None]:
+        """
+        Atomically move a token issued -> claimed for its owner. Returns (status, doc):
+          "claimed"  - caller may apply the reward (also returned for a token left claimed by an
+                       interrupted earlier attempt; award_credits_once keeps that idempotent)
+          "used"     - reward already applied
+          "expired" | "too_fast" | "invalid"
+        """
+        now = _utcnow()
+        doc = await self.verify_tokens.find_one_and_update(
+            {
+                "_id": token,
+                "user_id": user_id,
+                "status": "issued",
+                "expires_at": {"$gt": now},
+                "created_at": {"$lte": now - timedelta(seconds=min_age_seconds)},
+            },
+            {"$set": {"status": "claimed", "claimed_at": now}},
+            return_document=ReturnDocument.AFTER,
+        )
+        if doc:
+            return "claimed", doc
+        existing = await self.verify_tokens.find_one({"_id": token})
+        if not existing or existing.get("user_id") != user_id:
+            return "invalid", None
+        if existing["status"] == "rewarded":
+            return "used", existing
+        if existing["expires_at"] <= now:
+            return "expired", None
+        if existing["status"] == "claimed":
+            return "claimed", existing
+        return "too_fast", None
+
+    async def mark_verify_token_rewarded(self, token: str):
+        await self.verify_tokens.update_one({"_id": token}, {"$set": {"status": "rewarded"}})

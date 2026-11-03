@@ -1,6 +1,6 @@
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from pyrogram.errors.pyromod import ListenerTimeout
+from helper.conversation import ListenerTimeout
 from config import OWNER_ID
 import humanize
 
@@ -90,9 +90,12 @@ async def settings_page_2(client, query):
 ›› **ʀᴇᴘʟʏ ᴍᴇssᴀɢᴇ:**
 <pre>{client.reply_text}</pre>
     """
+    texts_row = [InlineKeyboardButton('ᴛᴇxᴛs', 'texts')]
+    if getattr(client, 'bot_type', 'bot1') in ('bot1', 'rin'):
+        texts_row.append(InlineKeyboardButton('sʜᴏʀᴛɴᴇʀ', 'shortner'))
     reply_markup = InlineKeyboardMarkup([
         [InlineKeyboardButton('ᴘʀᴏᴛᴇᴄᴛ ᴄᴏɴᴛᴇɴᴛ', 'protect'), InlineKeyboardButton('ᴘʜᴏᴛᴏs', 'photos')],
-        [InlineKeyboardButton('ᴛᴇxᴛs', 'texts'), InlineKeyboardButton('sʜᴏʀᴛɴᴇʀ', 'shortner')],
+        texts_row,
         [InlineKeyboardButton('ᴀᴜᴛᴏ ᴡᴀᴛᴇʀᴍᴀʀᴋ', 'toggle_watermark'), InlineKeyboardButton('ɢᴇᴛ ꜰɪʟᴇs ʙᴛɴ', 'toggle_get_files')],
         [InlineKeyboardButton('‹ ᴘʀᴇᴠ', 'settings'), InlineKeyboardButton('ʜᴏᴍᴇ', 'home')]
     ])

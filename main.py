@@ -4,12 +4,12 @@ from bot import Bot, web_app
 from config import (
     # Shared
     API_ID, API_HASH, WORKERS,
-    # Bot 1 (𝘚𝘢𝘥𝘪𝘦 𝘚𝘪𝘯𝘬)
+    # Bot 1 (𝘚𝘢𝘥𝘪𝘦 𝘚𝘪𝘯𝘬) — filestore, credits enabled
     BOT1_SESSION, BOT1_TOKEN, BOT1_BOT_USERNAME,
     BOT1_DB_URI, BOT1_DB_NAME, BOT1_DB_CHANNEL,
     BOT1_FSUBS, BOT1_ADMINS, BOT1_MESSAGES,
     BOT1_AUTO_DEL, BOT1_PROTECT, BOT1_DISABLE_BTN,
-    # Bot 2 (𝖶𝖺𝗇𝖽𝖺)
+    # Bot 2 (𝖶𝖺𝗇𝖽𝖺) — link protector, no credits
     BOT2_SESSION, BOT2_TOKEN, BOT2_BOT_USERNAME,
     BOT2_DB_URI, BOT2_DB_NAME, BOT2_DB_CHANNEL,
     BOT2_FSUBS, BOT2_ADMINS, BOT2_MESSAGES,
@@ -47,6 +47,7 @@ def _make_bot1() -> Bot:
         bot_type="bot1",
         bot2_db_channel=BOT2_DB_CHANNEL,
         bot2_bot_username=BOT2_BOT_USERNAME,
+        credits_enabled=True,
     )
 
 
@@ -57,6 +58,11 @@ def _make_bot2() -> Bot | None:
     if not BOT2_DB_CHANNEL:
         logger.warning("[SKIP] BOT2_DB_CHANNEL is 0 -- Bot 2 (𝖶𝖺𝗇𝖽𝖺) will NOT start.")
         return None
+    if (BOT2_DB_URI, BOT2_DB_NAME) == (BOT1_DB_URI, BOT1_DB_NAME):
+        logger.warning(
+            "BOT1 and BOT2 use the same MongoDB database; users, settings and 𝘚𝘢𝘥𝘪𝘦 𝘚𝘪𝘯𝘬's credits "
+            "would be shared with 𝖶𝖺𝗇𝖽𝖺. Set distinct BOT1_DB_NAME / BOT2_DB_NAME."
+        )
     return Bot(
         session=BOT2_SESSION,
         workers=WORKERS,
@@ -73,6 +79,7 @@ def _make_bot2() -> Bot | None:
         protect=BOT2_PROTECT,
         disable_btn=BOT2_DISABLE_BTN,
         bot_type="bot2",
+        credits_enabled=False,
     )
 
 

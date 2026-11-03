@@ -1,6 +1,7 @@
 from pyrogram import Client, filters
 from pyrogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 import humanize
+from helper.helper_func import NO_PREVIEW
 
 # ── Caption Helper ─────────────────────────────────────────────────────────
 
@@ -68,7 +69,7 @@ async def set_caption_cmd(client: Client, message: Message):
             [InlineKeyboardButton("✏️ Sᴇᴛ Cᴀᴘᴛɪᴏɴ Nᴏᴡ", callback_data="edit_caption_btn")],
             [InlineKeyboardButton("👁️ Vɪᴇᴡ Cᴜʀʀᴇɴᴛ Cᴀᴘᴛɪᴏɴ", callback_data="view_caption_btn")]
         ])
-        return await message.reply(help_text, reply_markup=reply_markup, disable_web_page_preview=True)
+        return await message.reply(help_text, reply_markup=reply_markup, link_preview_options=NO_PREVIEW)
 
     # Save caption to DB and memory
     await client.mongodb.set_caption(caption_text)
@@ -82,7 +83,7 @@ async def set_caption_cmd(client: Client, message: Message):
         f"<b>✅ Cᴜsᴛᴏᴍ Cᴀᴘᴛɪᴏɴ Uᴘᴅᴀᴛᴇᴅ Sᴜᴄᴄᴇssғᴜʟʟʏ!</b>\n\n"
         f"<b>Rᴀᴡ Tᴇᴍᴘʟᴀᴛᴇ:</b>\n<pre>{caption_text}</pre>\n\n"
         f"<b>Pʀᴇᴠɪᴇᴡ:</b>\n{preview}",
-        disable_web_page_preview=True
+        link_preview_options=NO_PREVIEW
     )
 
 # ── Command: /see_caption, /caption, /view_caption ─────────────────────────
@@ -118,7 +119,7 @@ async def see_caption_cmd(client: Client, message: Message):
         [InlineKeyboardButton("✏️ Eᴅɪᴛ Cᴀᴘᴛɪᴏɴ", callback_data="edit_caption_btn"), InlineKeyboardButton("🗑 Dᴇʟᴇᴛᴇ Cᴀᴘᴛɪᴏɴ", callback_data="del_caption_btn")],
         [InlineKeyboardButton("✕ Cʟᴏsᴇ", callback_data="close_caption_btn")]
     ])
-    await message.reply(msg_text, reply_markup=reply_markup, disable_web_page_preview=True)
+    await message.reply(msg_text, reply_markup=reply_markup, link_preview_options=NO_PREVIEW)
 
 # ── Command: /del_caption ──────────────────────────────────────────────────
 
@@ -165,7 +166,7 @@ async def cb_view_caption(client: Client, query: CallbackQuery):
         [InlineKeyboardButton("✏️ Eᴅɪᴛ Cᴀᴘᴛɪᴏɴ", callback_data="edit_caption_btn"), InlineKeyboardButton("🗑 Dᴇʟᴇᴛᴇ Cᴀᴘᴛɪᴏɴ", callback_data="del_caption_btn")],
         [InlineKeyboardButton("✕ Cʟᴏsᴇ", callback_data="close_caption_btn")]
     ])
-    await query.message.edit_text(msg_text, reply_markup=reply_markup, disable_web_page_preview=True)
+    await query.message.edit_text(msg_text, reply_markup=reply_markup, link_preview_options=NO_PREVIEW)
 
 @Client.on_callback_query(filters.regex("^edit_caption_btn$"))
 async def cb_edit_caption(client: Client, query: CallbackQuery):
@@ -196,7 +197,7 @@ async def cb_edit_caption(client: Client, query: CallbackQuery):
             f"<b>✅ Cᴜsᴛᴏᴍ Cᴀᴘᴛɪᴏɴ Uᴘᴅᴀᴛᴇᴅ Sᴜᴄᴄᴇssғᴜʟʟʏ!</b>\n\n"
             f"<b>Rᴀᴡ Tᴇᴍᴘʟᴀᴛᴇ:</b>\n<pre>{text}</pre>\n\n"
             f"<b>Pʀᴇᴠɪᴇᴡ:</b>\n{preview}",
-            disable_web_page_preview=True
+            link_preview_options=NO_PREVIEW
         )
     except Exception as e:
         client.LOGGER(__name__, client.name).error(f"Error setting custom caption via ask: {e}")
