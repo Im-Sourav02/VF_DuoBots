@@ -25,7 +25,7 @@ def _is_command_message(message: Message) -> bool:
 
 #===============================================================#
 # channel_post — Bot 1 filestore catch-all (group 1). Commands and
-# active /batch asks skip this handler so /start and /broadcast
+# active /batch asks must exit this handler so /start and /broadcast
 # never get the unused-message reply.
 #===============================================================#
 
@@ -52,7 +52,9 @@ async def channel_post(client: Client, message: Message):
         raise ContinuePropagation
 
     if _is_command_message(message):
-        raise ContinuePropagation
+        # This is a catch-all reply handler, not a command router. Return
+        # directly so recognized commands can never trigger client.reply_text.
+        return
 
     if message.service:
         raise ContinuePropagation
