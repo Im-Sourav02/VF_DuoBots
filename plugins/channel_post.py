@@ -46,8 +46,13 @@ def _has_active_listener(client: Client, message: Message) -> bool:
 
 # Group 1 so /start /broadcast /batch always run first. Commands still skip here
 # because later groups run unless the earlier handler raises StopPropagation.
-@Client.on_message(filters.private, group=1)
+@Client.on_message(filters.private & filters.incoming, group=1)
 async def channel_post(client: Client, message: Message):
+    # Some client updates include the bot's own replies in private chats. They
+    # must never enter this user-message catch-all or receive client.reply_text.
+    if getattr(message, "outgoing", False):
+        return
+
     if not ui.is_filestore(client):
         raise ContinuePropagation
 
