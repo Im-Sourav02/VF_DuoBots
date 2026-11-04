@@ -51,6 +51,10 @@ class Bot(ConversationMixin, Client):
         self.LOGGER          = LOGGER
         self.name            = session
         self.db              = db
+        # Keep the channel supplied at construction. `self.db` may later be
+        # switched to a dynamically configured primary DB channel, while
+        # cross-bot links are still written to the configured Bot 2 channel.
+        self.configured_db_channel = db
         self.fsub            = fsub
         self.owner           = OWNER_ID
         self.fsub_dict       = {}

@@ -51,6 +51,9 @@ _send_sephra_link = _send_bot2_link  # Backward compatibility alias
 async def _open_bot2_link(client: Client, message: Message, token_str: str):
     """Decode a 𝖶𝖺𝗇𝖽𝖺 deep link (b64 token, or plain integer for backward compatibility)."""
     msg_id = None
+    # Auto-chain links are written to the channel configured when Bot 2 was
+    # created. `client.db` can change to a different primary channel at startup.
+    link_store_channel = getattr(client, "configured_db_channel", client.db)
     try:
         if token_str.isdigit():
             msg_id = int(token_str)
@@ -58,7 +61,11 @@ async def _open_bot2_link(client: Client, message: Message, token_str: str):
             decoded_str = await decode(token_str)
             parts = decoded_str.split("-")
             if len(parts) == 2 and parts[0] == "get":
-                msg_id = int(int(parts[1]) / abs(client.db))
+                encoded_msg_id = int(parts[1])
+                divisor = abs(link_store_channel)
+                msg_id, remainder = divmod(encoded_msg_id, divisor)
+                if remainder:
+                    msg_id = None
             elif len(parts) == 1 and parts[0].isdigit():
                 msg_id = int(parts[0])
         if not msg_id:
@@ -68,9 +75,13 @@ async def _open_bot2_link(client: Client, message: Message, token_str: str):
         return await message.reply("⚠️ Invalid link.")
 
     try:
-        fetched = await client.get_messages(chat_id=client.db, message_ids=msg_id)
+        fetched = await client.get_messages(chat_id=link_store_channel, message_ids=msg_id)
         if fetched and fetched.text:
             return await _send_bot2_link(client, message, fetched.text.strip())
+        client.LOGGER(__name__, client.name).warning(
+            f"Bot2 chained link not found in configured channel "
+            f"(channel_id={link_store_channel}, message_id={msg_id}, active_primary={client.db})"
+        )
         return await message.reply("⚠️ Link expired or not found. Please request a new one.")
     except Exception as e:
         client.LOGGER(__name__, client.name).warning(f"Bot2 link fetch error: {e}")
